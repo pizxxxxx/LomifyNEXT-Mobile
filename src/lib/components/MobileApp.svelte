@@ -83,7 +83,7 @@
   }
 </script>
 
-<div class="mobile-app" use:mobileDepth={{ enabled: $settings.mobileDepthMotion === true && $settings.mobileMotion !== false, view: $currentView }} data-motion={$settings.mobileMotion === false ? 'off' : 'on'} data-blur={$settings.mobileBlur ? 'on' : 'off'} data-text-size={$settings.mobileTextSize} data-text-weight={$settings.mobileTextWeight}>
+<div class="mobile-app" data-view={$currentView} use:mobileDepth={{ enabled: $settings.mobileDepthMotion === true && $settings.mobileMotion !== false, view: $currentView }} data-motion={$settings.mobileMotion === false ? 'off' : 'on'} data-blur={$settings.mobileBlur ? 'on' : 'off'} data-text-size={$settings.mobileTextSize} data-text-weight={$settings.mobileTextWeight}>
   <header class="mobile-header">
     {#if !tabs.some(t => t.id === $currentView)}
       <button class="mobile-icon-button" aria-label="Назад" onclick={() => history.back()}><ArrowLeft size={24} /></button>
@@ -151,7 +151,7 @@
     {/if}
     {#if $currentView === 'equalizer'}<div class="mobile-pane" use:mobileReveal={true}><MobileEqualizer /></div>{/if}
     {#if $currentView === 'lyrics' || $currentView === 'artist'}
-      <div class="mobile-pane" use:mobileReveal={true}>
+      <div class="mobile-pane" class:mobile-artist-pane={$currentView === 'artist'} use:mobileReveal={true}>
         {#if $currentView === 'lyrics'}<Lyrics letterSync={$settings.mobileLyricsLetterSync} mobileMode={true} />{:else}<MobileArtistPage />{/if}
       </div>
     {/if}

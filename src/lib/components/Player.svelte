@@ -1509,14 +1509,13 @@
         <MobileVideoBackdrop track={$currentTrack} coverUrl={currentDisplayCover} active={$isPlaying && (!mobileShowLyrics || $settings.mobileLyricsVideoBackground !== false)} variant="player" />
         <div class="mobile-now-shade" aria-hidden="true"></div>
         <div class="mobile-now-header">
-          <button class="mobile-icon-button mobile-now-glass-button" aria-label="Свернуть плеер" on:click={closeMobilePlayer}><ChevronDown size={27} /></button>
-          {#if $queue.length > 0}
-            <button class="mobile-now-next" aria-label={isShuffle ? 'Перемешивание включено. Следующий трек' : `Следующий трек: ${$queue[0].title}`} on:click={() => playNext()}>
-              {#if $queue[0].coverUrl}<img src={$queue[0].coverUrl} alt="" />{:else}<Music2 size={18} aria-hidden="true" />{/if}
-              <span><small>{isShuffle ? 'ПЕРЕМЕШИВАНИЕ' : 'ДАЛЕЕ'}</small><strong>{isShuffle ? `${$queue.length} треков в очереди` : $queue[0].title}</strong></span>
-            </button>
-          {:else}<span class="mobile-now-next mobile-now-next-idle">СЕЙЧАС ИГРАЕТ</span>{/if}
-          <button class="mobile-icon-button mobile-now-glass-button" aria-label="Действия с треком" on:click={() => mobileTrackMenu.set($currentTrack)}><MoreHorizontal size={25} /></button>
+          <button class="mobile-now-dismiss" aria-label="Свернуть плеер" on:click={closeMobilePlayer}><span aria-hidden="true"></span></button>
+          <div class="mobile-now-track-heading">
+            <span class="mobile-now-cover">{#if currentDisplayCover}<img src={currentDisplayCover} alt="" on:error={(event) => handleArtworkError(event, $currentTrack.coverUrl || '')} on:load={handleArtworkLoad} />{:else}<Music2 size={26} aria-hidden="true" />{/if}</span>
+            <div class="mobile-now-title"><h1>{$currentTrack.title}</h1><p><ArtistTag artist={$currentTrack.artist} artists={$currentTrack.artists} onNavigate={() => { history.replaceState({ ...history.state, mobilePlayer: false }, ''); mobileExpanded = false; }} /></p></div>
+            <button class="mobile-icon-button" aria-label={isLiked ? 'Убрать из любимых' : 'В любимые'} aria-pressed={isLiked} on:click={toggleLike}><Heart size={24} fill={isLiked ? 'currentColor' : 'none'} /></button>
+            <button class="mobile-icon-button" aria-label="Действия с треком" on:click={() => mobileTrackMenu.set($currentTrack)}><MoreHorizontal size={25} /></button>
+          </div>
         </div>
         {#if mobileShowLyrics}
           <section class="mobile-now-lyrics" aria-label="Текст песни">
@@ -1524,22 +1523,21 @@
           </section>
         {:else}<div class="mobile-now-spacer" aria-hidden="true"></div>{/if}
         <div class="mobile-now-bottom">
-          <div class="mobile-now-title"><h1>{$currentTrack.title}</h1><p><ArtistTag artist={$currentTrack.artist} artists={$currentTrack.artists} onNavigate={() => { history.replaceState({ ...history.state, mobilePlayer: false }, ''); mobileExpanded = false; }} /></p></div>
           <label class="mobile-seek"><span class="sr-only">Позиция воспроизведения</span><input type="range" min="0" max={duration || 1} step="1" value={mobileSeekTime ?? mobileDisplayTime} style={`--seek-progress:${duration ? Math.min(100, (mobileSeekTime ?? mobileDisplayTime) / duration * 100) : 0}%`} disabled={!duration} on:input={(event) => mobileSeekTime = Number(event.currentTarget.value)} on:change={(event) => { seekTo(Number(event.currentTarget.value)); mobileSeekTime = null; }} on:pointercancel={() => mobileSeekTime = null} /></label>
           <div class="mobile-time"><span>{formatTime(mobileSeekTime ?? mobileDisplayTime)}</span><span>{formatTime(duration)}</span></div>
           <div class="mobile-now-controls">
-            <button class="mobile-icon-button" aria-label="Перемешивание" aria-pressed={isShuffle} on:click={() => isShuffle = !isShuffle}><Shuffle size={23} /></button>
             <button class="mobile-icon-button" aria-label="Предыдущий трек" on:click={playPrev}><SkipBack size={27} fill="currentColor" /></button>
             <button class="mobile-play-large" aria-label={loadingGeneration !== null ? 'Отменить загрузку' : $isPlaying ? 'Пауза' : 'Воспроизвести'} on:click={toggleMobilePlayback}>{#if loadingGeneration !== null}<Loader2 class="animate-spin" size={28} />{:else}<MorphIcon icon={$isPlaying ? PauseData : PlayData} size={31} fill="currentColor" spring="snappy" reducedMotion="user" />{/if}</button>
             <button class="mobile-icon-button" aria-label="Следующий трек" on:click={() => playNext()}><SkipForward size={27} fill="currentColor" /></button>
-            <button class="mobile-icon-button" aria-label={repeatMode === 2 ? 'Повтор одного трека' : repeatMode === 1 ? 'Повтор всей очереди' : 'Повтор выключен'} aria-pressed={repeatMode > 0} on:click={() => repeatMode = (repeatMode + 1) % 3}><Repeat size={23} />{#if repeatMode === 2}<span class="mobile-repeat-one">1</span>{/if}</button>
           </div>
           {#if loadingGeneration !== null}<p class="mobile-player-status" role="status">Загружаем трек... Нажми воспроизведение, чтобы отменить.</p>{:else if mobileLoadError}<p class="mobile-player-status mobile-error" role="status">{mobileLoadError}</p>{/if}
           <div class="mobile-now-extras">
-            <div class="mobile-now-extra-group"><button class="mobile-icon-button" aria-label={isLiked ? 'Убрать из любимых' : 'В любимые'} aria-pressed={isLiked} on:click={toggleLike}><Heart size={23} fill={isLiked ? 'currentColor' : 'none'} /></button><button class="mobile-icon-button" aria-label="Добавить трек" on:click={() => mobileTrackMenu.set($currentTrack)}><Plus size={23} /></button></div>
-            <button class="mobile-now-text-button" aria-pressed={mobileShowLyrics} on:click={() => mobileShowLyrics = !mobileShowLyrics}>{mobileShowLyrics ? 'Скрыть текст' : 'Показать текст'}</button>
+            <button class="mobile-icon-button" aria-label={mobileShowLyrics ? 'Скрыть текст' : 'Показать текст'} aria-pressed={mobileShowLyrics} on:click={() => mobileShowLyrics = !mobileShowLyrics}><Mic2 size={23} /></button>
+            <button class="mobile-icon-button" aria-label="Перемешивание" aria-pressed={isShuffle} on:click={() => isShuffle = !isShuffle}><Shuffle size={23} /></button>
+            <button class="mobile-icon-button" aria-label={repeatMode === 2 ? 'Повтор одного трека' : repeatMode === 1 ? 'Повтор всей очереди' : 'Повтор выключен'} aria-pressed={repeatMode > 0} on:click={() => repeatMode = (repeatMode + 1) % 3}><Repeat size={23} />{#if repeatMode === 2}<span class="mobile-repeat-one">1</span>{/if}</button>
+            <button class="mobile-icon-button" aria-label="Эквалайзер" on:click={() => openMobilePlayerView('equalizer')}><SlidersHorizontal size={23} /></button>
           </div>
-          <button class="mobile-now-eq-button" on:click={() => openMobilePlayerView('equalizer')}><SlidersHorizontal size={19} aria-hidden="true" /> Настроить звук</button>
+          {#if $queue.length > 0}<button class="mobile-now-queue" aria-label={`Следующий трек: ${$queue[0].title}`} on:click={() => playNext()}><span>{isShuffle ? 'Перемешивание' : 'Далее'}</span><strong>{$queue[0].title}</strong><SkipForward size={17} aria-hidden="true" /></button>{/if}
         </div>
     </div>
     {/if}

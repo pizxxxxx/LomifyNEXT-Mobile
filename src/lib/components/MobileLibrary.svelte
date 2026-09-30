@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import { slide } from 'svelte/transition';
-  import { Heart, Music2, ArrowLeft, Play, Plus, MoreHorizontal, Download, Check, Trash2, ChevronRight, Pencil, ImagePlus, Shuffle } from 'lucide-svelte';
+  import { Heart, Music2, ArrowLeft, Play, Plus, MoreHorizontal, Download, Check, Trash2, ChevronRight, Pencil, ImagePlus, Shuffle, UserRound, ListMusic, Settings as SettingsIcon } from 'lucide-svelte';
   import { likedTracks, playlists, currentTrack, isPlaying, queue, settings, notify, currentView } from '$lib/stores';
   import { mobileHold } from '$lib/actions/mobileHold';
   import { createMobilePlaylist, deleteMobilePlaylist, mobileTrackKey, openMobileTrackMenu, renameMobilePlaylist, restoreMobilePlaylistOrder, shuffleMobilePlaylist, stopScWave } from '$lib/mobileTracks';
@@ -12,8 +12,19 @@
   import { coverUrlAtSize, coverUrlForTrack, downloadedCoverCache, handleArtworkError, handleArtworkLoad } from '$lib/offlineCovers';
   import { buildTrackUrn } from '$lib/utils/trackUrn';
   import ArtistTag from './ArtistTag.svelte';
-  type LibrarySection = 'overview' | 'likes' | 'downloads' | 'playlist';
+  import { loadMobileArtists, mobileSavedArtists } from '$lib/mobileArtists';
+  import { goToArtist } from '$lib/utils/navigation';
+  type LibrarySection = 'overview' | 'likes' | 'downloads' | 'playlist' | 'playlists' | 'artists';
   let section = $state<LibrarySection>('overview');
+  let recentTracks = $derived.by(() => {
+    const seen = new Set<string>();
+    return [...$likedTracks, ...$mobileDownloads].filter(track => {
+      const key = mobileTrackKey(track);
+      if (seen.has(key) || $settings.mobileHiddenTracks.includes(key)) return false;
+      seen.add(key);
+      return true;
+    }).slice(0, 8);
+  });
   let offlineOnly = $derived(section === 'downloads');
   const downloadCount = $derived(Object.values($mobileDownloadJobs).filter(job => job.status !== 'error').length);
   let playlistId = $state<string | null>(null);
@@ -64,6 +75,7 @@
     windowSize = Math.ceil(scrollRoot.clientHeight / ROW_HEIGHT) + OVERSCAN * 2;
   }
   onMount(() => {
+    loadMobileArtists();
     void loadMobilePlaylistCovers().catch(error => console.warn('[playlists] обложки недоступны', error));
     scrollRoot = libraryRoot.closest<HTMLElement>('.mobile-pane');
     let frame = 0;
@@ -76,7 +88,7 @@
     if (scrollRoot) resize.observe(scrollRoot);
     const syncLocation = (state: any) => {
       if (state?.mobileView !== 'library') return;
-      section = ['likes', 'downloads', 'playlist'].includes(state.mobileLibrarySection) ? state.mobileLibrarySection : 'overview';
+      section = ['likes', 'downloads', 'playlist', 'playlists', 'artists'].includes(state.mobileLibrarySection) ? state.mobileLibrarySection : 'overview';
       playlistId = section === 'playlist' ? String(state.mobilePlaylistId || '') : null;
       if (playlistId !== undoPlaylistId) { undoPlaylistId = null; undoOrder = null; }
       confirmAction = null;
@@ -140,6 +152,12 @@
   function play(track: any) {
     stopScWave();
     queue.set(tracks.slice(tracks.indexOf(track) + 1));
+    currentTrack.set(track);
+    isPlaying.set(true);
+  }
+  function playRecent(track: any) {
+    stopScWave();
+    queue.set(recentTracks.slice(recentTracks.indexOf(track) + 1));
     currentTrack.set(track);
     isPlaying.set(true);
   }
@@ -267,16 +285,27 @@
   }
 </script>
 <section class="mobile-library" bind:this={libraryRoot}>
-  {#if section === 'overview'}
-    <h1>Медиатека</h1>
-    <div class="mobile-section-heading mobile-library-heading"><h2>Мои коллекции</h2></div>
-    <div class="mobile-library-collections">
-      <button class="mobile-library-collection" onclick={() => openSection('likes')}><span class="mobile-library-collection-icon"><Heart size={24} aria-hidden="true" /></span><span><strong>Любимые треки</strong><small>{countTracks($likedTracks.length)}</small></span><ChevronRight size={20} aria-hidden="true" /></button>
-      <button class="mobile-library-collection" onclick={() => openSection('downloads')}><span class="mobile-library-collection-icon"><Download size={24} aria-hidden="true" /></span><span><strong>Скачанное</strong><small>{countTracks($mobileDownloads.length)} на телефоне</small></span><ChevronRight size={20} aria-hidden="true" /></button>
-    </div>
-    <div class="mobile-section-heading mobile-library-heading"><h2>Плейлисты · {$playlists.length}</h2><button class="mobile-icon-button" aria-label="Создать плейлист" onclick={() => creating = !creating}><Plus size={23} /></button></div>
+  {#if section === 'overview' || section === 'playlists' || section === 'artists'}
+    {#if section !== 'overview'}<button class="mobile-library-back" onclick={backToOverview}><ArrowLeft size={20} aria-hidden="true" /> Медиатека</button>{/if}
+    <div class="mobile-library-page-heading"><h1>{section === 'artists' ? 'Исполнители' : section === 'playlists' ? 'Плейлисты' : 'Медиатека'}</h1><div class="mobile-library-heading-tools">{#if section !== 'artists'}<button class="mobile-icon-button mobile-glass-button" aria-label="Создать плейлист" aria-expanded={creating} onclick={() => creating = !creating}><Plus size={23} aria-hidden="true" /></button>{/if}<button class="mobile-icon-button mobile-glass-button" aria-label="Открыть настройки" onclick={() => currentView.set('settings')}><SettingsIcon size={22} aria-hidden="true" /></button></div></div>
     {#if creating}<form class="mobile-create-playlist" in:slide|local={{ duration: revealDuration(true) }} out:slide|local={{ duration: revealDuration(false) }} onsubmit={(event) => { event.preventDefault(); create(); }}><label for="mobile-playlist-name">Название плейлиста</label><input id="mobile-playlist-name" bind:value={newName} maxlength="80" placeholder="Например, в дорогу" /><button class="mobile-primary" type="submit">Создать</button></form>{/if}
-    {#if $playlists.length}<div class="mobile-playlists">{#each $playlists as playlist (playlist.id)}<button class="mobile-playlist-card" onclick={() => openSection('playlist', String(playlist.id))}><span><Music2 size={28} aria-hidden="true" />{#if $mobilePlaylistCoverUrls[String(playlist.id)]}<img src={$mobilePlaylistCoverUrls[String(playlist.id)]} alt="" loading="lazy" />{:else if playlist.tracks?.[0]?.coverUrl}<img src={playlist.tracks[0].coverUrl} alt="" loading="lazy" onerror={(event) => handleArtworkError(event, playlist.tracks[0].coverUrl)} onload={handleArtworkLoad} />{/if}</span><strong>{playlist.title}</strong><small>{countTracks(playlist.tracks?.length || 0)}</small></button>{/each}</div>{/if}
+    {#if section === 'artists'}
+      {#if $mobileSavedArtists.length}<div class="mobile-saved-artists">{#each $mobileSavedArtists as artist (artist.name)}<button class="mobile-saved-artist" onclick={() => goToArtist(artist.name)}><span>{#if artist.avatarUrl}<img src={coverUrlAtSize(artist.avatarUrl, 160)} alt="" loading="lazy" onerror={(event) => handleArtworkError(event, artist.avatarUrl, 160)} onload={handleArtworkLoad} />{:else}<UserRound size={28} aria-hidden="true" />{/if}</span><strong>{artist.name}</strong><ChevronRight size={20} aria-hidden="true" /></button>{/each}</div>{:else}<div class="mobile-empty"><UserRound size={38} aria-hidden="true" /><h3>Любимые исполнители</h3><p>Открой страницу исполнителя и нажми звезду, чтобы сохранить его здесь.</p><button class="mobile-primary" onclick={() => currentView.set('search')}>Найти исполнителя</button></div>{/if}
+    {:else}
+      <div class:mobile-library-shelf={section === 'overview'} class:mobile-playlists={section === 'playlists'} aria-label={section === 'overview' ? 'Твои коллекции' : 'Твои плейлисты'}>
+        {#if section === 'overview'}<button class="mobile-playlist-card mobile-liked-card" onclick={() => openSection('likes')}><span><Heart size={52} fill="currentColor" aria-hidden="true" /></span><strong>Любимые треки</strong><small>{countTracks($likedTracks.length)}</small></button>{/if}
+        {#each (section === 'overview' ? $playlists.slice(0, 6) : $playlists) as playlist (playlist.id)}<button class="mobile-playlist-card" onclick={() => openSection('playlist', String(playlist.id))}><span><Music2 size={28} aria-hidden="true" />{#if $mobilePlaylistCoverUrls[String(playlist.id)]}<img src={$mobilePlaylistCoverUrls[String(playlist.id)]} alt="" loading="lazy" />{:else if playlist.tracks?.[0]?.coverUrl}<img src={playlist.tracks[0].coverUrl} alt="" loading="lazy" onerror={(event) => handleArtworkError(event, playlist.tracks[0].coverUrl)} onload={handleArtworkLoad} />{/if}</span><strong>{playlist.title}</strong><small>{countTracks(playlist.tracks?.length || 0)}</small></button>{/each}
+      </div>
+      {#if section === 'overview'}
+        <div class="mobile-library-collections">
+          <button class="mobile-library-collection" onclick={() => openSection('playlists')}><ListMusic size={25} aria-hidden="true" /><span><strong>Плейлисты</strong></span><small>{$playlists.length}</small><ChevronRight size={19} aria-hidden="true" /></button>
+          <button class="mobile-library-collection" onclick={() => openSection('artists')}><UserRound size={25} aria-hidden="true" /><span><strong>Исполнители</strong></span><small>{$mobileSavedArtists.length}</small><ChevronRight size={19} aria-hidden="true" /></button>
+          <button class="mobile-library-collection" onclick={() => openSection('likes')}><Music2 size={25} aria-hidden="true" /><span><strong>Любимые треки</strong></span><small>{$likedTracks.length}</small><ChevronRight size={19} aria-hidden="true" /></button>
+          <button class="mobile-library-collection" onclick={() => openSection('downloads')}><Download size={25} aria-hidden="true" /><span><strong>Скачанное</strong></span><small>{$mobileDownloads.length}</small><ChevronRight size={19} aria-hidden="true" /></button>
+        </div>
+        {#if recentTracks.length}<div class="mobile-section-heading"><h2>Недавно добавлено</h2></div><div class="mobile-recent-grid">{#each recentTracks as track (mobileTrackKey(track))}<div class="mobile-recent-card"><button class="mobile-recent-play" onclick={() => playRecent(track)} aria-label={`Слушать ${track.title}`}><span class="mobile-album-art"><Music2 size={32} aria-hidden="true" />{#if track.coverUrl}<img src={coverUrlAtSize(coverUrlForTrack(track, $downloadedCoverCache), 360)} alt="" loading="lazy" onerror={(event) => handleArtworkError(event, track.coverUrl, 360)} onload={handleArtworkLoad} />{/if}</span><strong>{track.title}</strong><small>{track.artist}</small></button><button class="mobile-icon-button mobile-recent-menu" aria-label={`Меню трека ${track.title}`} onclick={() => openMobileTrackMenu(track)}><MoreHorizontal size={20} aria-hidden="true" /></button></div>{/each}</div>{/if}
+      {:else if !$playlists.length}<div class="mobile-empty"><ListMusic size={36} aria-hidden="true" /><h3>Твои плейлисты</h3><p>Собери музыку для любого настроения.</p><button class="mobile-primary" onclick={() => creating = true}>Создать плейлист</button></div>{/if}
+    {/if}
   {:else}
   <button class="mobile-library-back" onclick={backToOverview}><ArrowLeft size={20} aria-hidden="true" /> Медиатека</button>
   {#if selected && undoPlaylistId === String(selected.id) && undoOrder}<div class="mobile-playlist-undo" role="status"><span>Плейлист перемешан</span><button onclick={undoShuffle}>Отменить</button></div>{/if}

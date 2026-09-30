@@ -1,10 +1,12 @@
 <script lang="ts">
-  import { Disc3, Loader2, MoreHorizontal, Music2, Play, RefreshCw, UserRound, ChevronLeft } from 'lucide-svelte';
+  import { onMount } from 'svelte';
+  import { Disc3, Info, Loader2, MoreHorizontal, Music2, Play, RefreshCw, UserRound, ChevronLeft, Star, Share2 } from 'lucide-svelte';
   import { currentArtist, currentTrack, isPlaying, queue, settings, notify } from '$lib/stores';
   import { getArtistAlbums, getArtistProfile, getArtistTracks, getAlbumTracks, trackByArtist, type ArtistSource } from '$lib/api';
   import { coverUrlAtSize, coverUrlForTrack, downloadedCoverCache, handleArtworkError, handleArtworkLoad } from '$lib/offlineCovers';
   import { mobileHold } from '$lib/actions/mobileHold';
   import { mobileTrackMenu, stopScWave } from '$lib/mobileTracks';
+  import { loadMobileArtists, mobileArtistKey, mobileSavedArtists, toggleMobileArtist } from '$lib/mobileArtists';
 
   let source = $state<ArtistSource>($settings.searchSource === 'yandex' && $settings.yandexToken ? 'yandex' : 'soundcloud');
   let tab = $state<'tracks' | 'albums'>('tracks');
@@ -19,7 +21,27 @@
   let openAlbum = $state<any | null>(null);
   let albumTracks = $state<any[] | null>(null);
   let albumRequest = 0;
-  let avatar = $derived(profile?.avatarUrl || tracks[0]?.artistAvatarUrl || tracks[0]?.coverUrl || '');
+  let avatar = $derived(profile?.avatarUrl || profile?.bannerUrl || tracks[0]?.artistAvatarUrl || tracks[0]?.coverUrl || '');
+  let featuredAlbum = $derived(albums[0]);
+  let showAbout = $state(false);
+  let isSaved = $derived($mobileSavedArtists.some(artist => mobileArtistKey(artist.name) === mobileArtistKey($currentArtist)));
+  onMount(loadMobileArtists);
+
+  function saveArtist() {
+    const saved = toggleMobileArtist($currentArtist, avatar);
+    notify(saved ? 'Исполнитель добавлен в медиатеку' : 'Исполнитель убран из медиатеки', 'success');
+  }
+
+  async function shareArtist() {
+    const url = profile?.permalink;
+    if (!url) return;
+    try {
+      if (navigator.share) await navigator.share({ title: $currentArtist, url });
+      else { await navigator.clipboard.writeText(url); notify('Ссылка на исполнителя скопирована', 'success'); }
+    } catch (error) {
+      if (!(error instanceof DOMException && error.name === 'AbortError')) notify('Не удалось поделиться ссылкой. Попробуй ещё раз.', 'info');
+    }
+  }
 
   $effect(() => {
     const name = $currentArtist.trim();
@@ -30,6 +52,7 @@
     tracks = [];
     albums = [];
     profile = null;
+    showAbout = false;
     openAlbum = null;
     albumTracks = null;
     tab = 'tracks';
@@ -101,27 +124,40 @@
 
 <section class="mobile-artist-page" aria-label={`Исполнитель ${$currentArtist}`}>
   <header class="mobile-artist-hero">
-    {#if profile?.bannerUrl}<img class="mobile-artist-banner" src={profile.bannerUrl} alt="" loading="eager" decoding="async" />{/if}
+    {#if avatar}<img class="mobile-artist-portrait" src={coverUrlAtSize(avatar, 800)} alt="" loading="eager" decoding="async" onerror={(event) => handleArtworkError(event, avatar, 800)} onload={handleArtworkLoad} />{:else}<UserRound class="mobile-artist-portrait-fallback" size={120} aria-hidden="true" />{/if}
+    <div class="mobile-artist-toolbar">
+      <button class="mobile-icon-button mobile-glass-button" type="button" aria-label="Назад" onclick={() => history.back()}><ChevronLeft size={27} aria-hidden="true" /></button>
+      {#if profile?.permalink}<button class="mobile-icon-button mobile-glass-button" type="button" aria-label="Поделиться исполнителем" onclick={() => void shareArtist()}><Share2 size={23} aria-hidden="true" /></button>{/if}
+    </div>
     <div class="mobile-artist-hero-content">
-      <div class="mobile-artist-avatar">
-        {#if avatar}<img src={coverUrlAtSize(avatar, 240)} alt="" onerror={(event) => handleArtworkError(event, avatar, 240)} onload={handleArtworkLoad} />{:else}<UserRound size={32} aria-hidden="true" />{/if}
-      </div>
       <div class="mobile-artist-identity">
-        <span>ИСПОЛНИТЕЛЬ</span>
         <h1>{$currentArtist}</h1>
-        {#if tracks.length || albums.length}<p>{tracks.length} треков{#if albums.length} · {albums.length} релизов{/if}</p>{/if}
+      </div>
+      <div class="mobile-artist-hero-actions">
+        <button class="mobile-icon-button mobile-glass-button" type="button" aria-label="Об исполнителе" aria-expanded={showAbout} onclick={() => showAbout = !showAbout}><Info size={24} aria-hidden="true" /></button>
+        <button class="mobile-artist-main-play" type="button" disabled={!tracks.length} aria-label="Слушать треки исполнителя" onclick={() => play(tracks[0], tracks)}>{#if loadingTracks}<Loader2 class="animate-spin" size={29} aria-hidden="true" />{:else}<Play size={32} fill="currentColor" aria-hidden="true" />{/if}</button>
+        <button class="mobile-icon-button mobile-glass-button" type="button" aria-label={isSaved ? 'Убрать исполнителя из медиатеки' : 'Добавить исполнителя в медиатеку'} aria-pressed={isSaved} onclick={saveArtist}><Star size={24} fill={isSaved ? 'currentColor' : 'none'} aria-hidden="true" /></button>
       </div>
     </div>
   </header>
 
+  <div class="mobile-artist-body">
+  {#if showAbout}<section class="mobile-artist-about" aria-label="Об исполнителе"><h2>{$currentArtist}</h2>{#if profile?.description}<p>{profile.description}</p>{/if}<p>{source === 'yandex' ? 'Яндекс Музыка' : 'SoundCloud'} · Треки: {tracks.length} · Релизы: {albums.length}</p></section>{/if}
   <div class="mobile-artist-source" role="group" aria-label="Источник музыки">
     <button type="button" aria-pressed={source === 'soundcloud'} onclick={() => selectSource('soundcloud')}>SoundCloud</button>
     <button type="button" aria-pressed={source === 'yandex'} aria-disabled={!$settings.yandexToken} onclick={() => selectSource('yandex')}>Яндекс Музыка</button>
   </div>
 
+  {#if featuredAlbum && !openAlbum}
+    <button type="button" class="mobile-artist-featured" onclick={() => void showAlbum(featuredAlbum)}>
+      <span class="mobile-artist-featured-art">{#if featuredAlbum.coverUrl}<img src={coverUrlAtSize(featuredAlbum.coverUrl, 240)} alt="" loading="lazy" decoding="async" />{:else}<Disc3 size={32} aria-hidden="true" />{/if}</span>
+      <span class="mobile-artist-featured-copy"><small>{featuredAlbum.year || 'Релиз исполнителя'}</small><strong>{featuredAlbum.title}</strong><small>{featuredAlbum.trackCount === 1 ? 'Сингл' : 'Альбом'}</small></span>
+      <ChevronLeft class="mobile-artist-featured-arrow" size={21} aria-hidden="true" />
+    </button>
+  {/if}
+
   <div class="mobile-artist-heading">
-    <div><h2>Музыка</h2><p>{source === 'yandex' ? 'Яндекс Музыка' : 'SoundCloud'}</p></div>
-    {#if tracks.length}<button class="mobile-icon-button mobile-artist-play-all" type="button" aria-label="Слушать треки исполнителя" onclick={() => play(tracks[0], tracks)}><Play size={21} fill="currentColor" aria-hidden="true" /></button>{/if}
+    <h2>{tab === 'tracks' ? 'Популярные треки' : 'Релизы'}</h2>
   </div>
 
   {#if albums.length || loadingAlbums}
@@ -175,4 +211,5 @@
       {/each}
     </div>
   {:else}<div class="mobile-artist-empty"><Disc3 size={26} aria-hidden="true" /><p>Релизов пока нет.</p></div>{/if}
+  </div>
 </section>

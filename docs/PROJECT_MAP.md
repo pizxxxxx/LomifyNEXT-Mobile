@@ -1,7 +1,7 @@
 # LomifyNEXT project map
 
 Last verified: 2026-09-30  
-Indexed desktop base: 9.3.2. Current mobile worktree: 1.0.12 beta (see the mobile section).
+Indexed desktop base: 9.3.2. Current mobile worktree: 1.0.13 beta (see the mobile section).
 
 This file is the navigation index for the repository. Read it before broad exploration.
 It explains where a change normally belongs; source code is still the final authority.
@@ -410,7 +410,8 @@ When changing the application version, verify all of these locations:
 2. `src-tauri/Cargo.toml` — Rust package version.
 3. `src-tauri/tauri.conf.json` — Tauri bundle version.
 4. `src/lib/version.ts` — UI-visible version and channel.
-5. `src/lib/changelog.ts` for in-app notices and `docs/releases/v1.0.12.md` for GitHub release notes.
+5. `src/lib/changelog.ts` for in-app notices and `docs/releases/v1.0.13.md` for current GitHub release notes.
+   Current GitHub notes retain the requested 1.0.10 baseline and include 1.0.11/1.0.12 changes.
    The 1.0.12 GitHub notes aggregate changes since the last published version, 1.0.10;
    the intermediate local build 1.0.11 was not published.
 6. In the mobile worktree, `src-tauri/tauri.conf.json > bundle.android.versionCode`
@@ -442,6 +443,8 @@ owned by `src/lib/mobile.ts` (Android/iOS user agent; `?mobile` for development 
 
 - `src/lib/components/MobileApp.svelte`: phone header, four bottom tabs, home feed,
   native/browser back history, retained lazy-mounted tabs with independent scroll regions.
+  `src/mobile.css` owns floating pill navigation and mini-player, artwork-led artist
+  layout and shared phone typography; the selected Lomify accent/font settings persist.
   Home labels the selected recommendation source; `+page.svelte` ignores stale feed
   responses after a source change. Mobile `api.getTrendingTracks` never falls back to
   SoundCloud when Yandex is selected and reports a missing token or failed source.
@@ -458,10 +461,16 @@ owned by `src/lib/mobile.ts` (Android/iOS user agent; `?mobile` for development 
   Appearance starts collapsed; summary rows show the current choice or a short description.
   EQ gains, enabled flag, and preset live in `lomifynext_settings`; `Player.svelte`
   coalesces updates and disables native filters when flat or switched off.
-- `MobileArtistPage.svelte`: compact phone artist profile, source selector, tracks and
+- `MobileArtistPage.svelte`: full-bleed artist portrait with centered name/play controls,
+  profile information/share action, featured release, source selector, tracks and
   albums with lazy album-track loading and a 40-row initial track window. It replaces
   the desktop `ArtistPage.svelte` only in the mobile shell; `ArtistTag` and the mobile
   track menu navigate here through `goToArtist`.
+- `src/lib/mobileArtists.ts`: bounded saved-artist collection in
+  `lomifynext_mobile_artists` localStorage, with name normalization and defensive loading.
+  The artist-page star toggles local membership; `MobileLibrary.svelte > Исполнители`
+  opens saved pages. `node scripts/mobile-artists-test.mjs` covers session restore,
+  removal, Unicode deduplication, damaged/unavailable storage and the 200-item limit.
 - `MobileConnections.svelte`: collapsible, numbered Yandex/MarshalX device-flow guide
   (external browser, manual token paste), public SoundCloud profile/likes/playlist import,
   bounded account checks and recoverable errors. `mobileConnectionRequest` in `mobile.ts`
@@ -481,7 +490,8 @@ owned by `src/lib/mobile.ts` (Android/iOS user agent; `?mobile` for development 
   Mobile `wave.ts` additionally cancels stale starts with optional AbortSignal, account/
   track guards and request generations; refills cannot leak into a restarted session.
   The UI cancels pending startup on exit or after 25 seconds; active playback persists.
-- `MobileLibrary.svelte`: collection overview with separate liked, downloaded and
+- `MobileLibrary.svelte`: horizontal collection shelf, category rows and recent-track
+  artwork grid; separate playlists and saved-artists screens plus liked, downloaded and
   playlist track screens, playlist creation/playback, local title/cover editing,
   shake/manual playlist shuffle with top undo (enabled by `settings.mobileShakeShuffle`),
   per-track downloads through the three-dot menu and sequential bulk downloads. Track rows have matching 88px CSS/virtualization
@@ -510,7 +520,10 @@ owned by `src/lib/mobile.ts` (Android/iOS user agent; `?mobile` for development 
   dialog; audio preview starts only from its button and pauses/restores native playback.
   Its compact cover/title header and highlighted next-in-queue action are shared across phone views.
 - Mobile `Player.svelte` mounts shared `Lyrics.svelte` in its full-player middle region
-  by default, with centered text and a hide/show action. The persistent line/letter
+  by default, with large left-aligned text and a hide/show action. A compact artwork/title
+  header owns artist/like/menu actions; bottom transport is followed by lyrics/shuffle/
+  repeat/EQ actions. Portrait and landscape layouts keep lyrics above/beside controls.
+  The persistent line/letter
   selector lives in `MobileSettings.svelte > Текст песни`.
   `Lyrics.svelte > embedded` reuses the player background without a second video.
   `MobileWave.svelte` opens this panel from the synchronized lyric snippet.
@@ -578,8 +591,8 @@ owned by `src/lib/mobile.ts` (Android/iOS user agent; `?mobile` for development 
 - `src-tauri/gen/android/.../MainActivity.kt` disables WebView pinch zoom and allows
   user-started delayed preview playback.
 - `src/lib/changelog.ts`: structured Android preview notes for this mobile worktree.
-  Android version is `1.0.12` in npm/Cargo/Tauri metadata and `src/lib/version.ts`.
-  `bundle.android.versionCode` is 9010003, above earlier Android test installs.
+  Android version is `1.0.13` in npm/Cargo/Tauri metadata and `src/lib/version.ts`.
+  `bundle.android.versionCode` is 9010004, above earlier Android test installs.
 - `src/lib/mobileUpdateCore.ts`: pure semantic-version comparison and strict GitHub
   ARM64 APK asset selection; the APK name, not its GitHub release tag, is authoritative.
   `src/lib/mobileUpdates.ts` checks the public GitHub releases API on Android launch/
@@ -622,7 +635,7 @@ owned by `src/lib/mobile.ts` (Android/iOS user agent; `?mobile` for development 
   `app/mod.rs` now keep desktop plugins, tray, FFmpeg and media controls off both
   mobile targets. iOS uses the mobile Symphonia decode path and persistent app-data
   downloads. `src-tauri/tauri.conf.json > bundle.iOS` sets iOS 15 minimum and build
-  number 10004. `src-tauri/icons/ios/` uses the current plum PC artwork. This is not
+  number 10005. `src-tauri/icons/ios/` uses the current plum PC artwork. This is not
   an iOS build or a verified sound path; the iOS audio session, background playback,
   lock-screen controls and WKWebView network behavior need Mac/iPhone testing.
 - `src-tauri/Info.ios.plist` allows only local networking for the app's 127.0.0.1
@@ -672,10 +685,15 @@ Commands from mobile worktree root:
 - `LomifyNEXT-1.0.11-arm64.apk` is the preceding local beta build: Android versionCode
   9010002, ARM64 only, minimum API 26. Its verified signing certificate matches
   `LomifyNEXT-1.0.10-arm64.apk`, and SDK zip alignment checks pass for 16 KiB pages.
-- `LomifyNEXT-1.0.12-arm64.apk` is the current local beta build: Android versionCode
+- `LomifyNEXT-1.0.12-arm64.apk` is the preceding local beta build: Android versionCode
   9010003, ARM64 only, minimum API 26; mobile design polish. Its signing certificate matches
   1.0.11 and the final signed APK passes 16 KiB page alignment checks. Visual QA uses synthetic data at phone
   portrait/landscape sizes; no real-phone smoke test was performed for this release.
+- `LomifyNEXT-1.0.13-arm64.apk` is the current local beta build: Android versionCode
+  9010004, ARM64 only, minimum API 26; artist/library/player redesign and saved artists.
+  Uses the same direct-share signing key as 1.0.12 and 16 KiB page alignment checks.
+  Browser visual QA uses synthetic data at 320x640, 375x812, 412x915 and 844x390;
+  no real-phone smoke test was performed for this release.
 
 SDK: Android API 26 minimum, Android Studio JBR, SDK/NDK via JAVA_HOME, ANDROID_HOME,
 NDK_HOME. Android foreground media notification and hardware transport keys have been
