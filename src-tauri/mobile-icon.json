@@ -1,0 +1,6 @@
+{
+  "default": "../NewIcon.png",
+  "android_fg": "../NewIconPPP.png",
+  "bg_color": "#2a1c4d",
+  "android_fg_scale": 80
+}

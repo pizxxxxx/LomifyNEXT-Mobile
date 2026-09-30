@@ -1,76 +1,52 @@
-[README.md](https://github.com/user-attachments/files/32679556/README.md)
-# LomifyNEXT
+# LomifyNEXT Mobile
 
-[![Release](https://img.shields.io/github/v/release/pizxxxxx/LomifyNEXT?color=ff5500)](https://github.com/pizxxxxx/LomifyNEXT/releases)
-[![License: GPL-3.0-or-later](https://img.shields.io/badge/License-GPL--3.0%2B-blue.svg)](LICENSE)
-[![Поддержать через ЮMoney](https://img.shields.io/badge/ЮMoney-поддержать-8b3ffd)](https://yoomoney.ru/to/4100116984624656)
+Мобильный музыкальный плеер для Android с Яндекс Музыкой, SoundCloud и локальной медиатекой. Интерфейс построен на Svelte 5, нативное воспроизведение - на Tauri 2 и Rust.
 
-<p align="center">
-  <img src="NewIcon.png" alt="LomifyNEXT Logo" width="160" />
-</p>
+## Установка на Android
 
-## О проекте
+1. Откройте [последний релиз](https://github.com/pizxxxxx/LomifyNEXT-Mobile/releases/latest).
+2. В разделе **Assets** скачайте `LomifyNEXT-1.0.12-arm64.apk`.
+3. Откройте скачанный файл и подтвердите установку. Если Android запросит разрешение, разрешите установку для браузера, из которого скачан APK, и вернитесь к файлу.
+4. Откройте LomifyNEXT. Подключение музыки находится в **Настройки > Музыка и аккаунты**.
 
-**LomifyNEXT** — это легковесный десктопный аудиоплеер с акцентом на визуал и удобство, объединяющий медиатеки **Яндекс Музыки** и **SoundCloud** в одном приложении.
+Требуется Android 8 или новее и ARM64-процессор. Обновление устанавливается поверх предыдущей версии с сохранением данных. Приложение проверяет новые релизы; вручную проверить обновление можно в **Настройки > Обновления**.
 
-> [!NOTE]
-> **Для пользователей из РФ:**  
-> Для стабильного воспроизведения треков из **SoundCloud** требуется включенный VPN или настроенный zapret, так как без средств обхода блокировок аудиопотоки СК в России не отдаются.
-
-> [!CAUTION]
-> Интеграция с Яндекс Музыкой НЕ даёт возможность слушать музыку без авторизации и активной подписки Яндекс Плюс.
-
----
+Для полного прослушивания Яндекс Музыки нужны аккаунт и подписка Плюс. Инструкции подключения Яндекса и SoundCloud находятся в приложении и в [руководстве Android](docs/ANDROID.md).
 
 ## Возможности
 
-* **Два сервиса в одном окне:** Бесшовный поиск и воспроизведение треков как из SoundCloud, так и из Яндекс Музыки.
-* **Тексты песен:** Просмотр синхронизированных слов прямо во время воспроизведения.
-* **Система лайков:** Сохранение любимых треков в избранное в один клик.
-* **Глубокая кастомизация:** Тонкая настройка тем, интерфейса, параметров звука и встроенного эквалайзера.
-* **Производительность:** Нативный легковесный движок на базе Tauri и Svelte с минимальным потреблением ресурсов.
+- Поиск, любимые треки, плейлисты и скачанная музыка.
+- Станции Яндекс Музыки и SoundCloud.
+- Полноэкранный плеер с видеофоном и синхронным текстом песни.
+- Подсветка текста по строкам или по буквам через настройки.
+- Добавление трека следующим через меню **В очередь**.
+- Фоновое воспроизведение и управление из уведомления Android.
+- Темы, шрифты, эквалайзер и экономия трафика.
 
----
+[Изменения версии 1.0.12 относительно 1.0.10](docs/releases/v1.0.12.md). Промежуточная версия 1.0.11 отдельно не выпускалась.
 
 ## Разработка
 
-Проект построен на стеке **Tauri + SvelteKit + TypeScript (Vite)**.
-
-### Рекомендуемое окружение (IDE Setup)
-
-* [VS Code](https://code.visualstudio.com/)
-* Расширения:
-  * [Svelte for VS Code](https://marketplace.visualstudio.com/items?itemName=svelte.svelte-vscode)
-  * [Tauri](https://marketplace.visualstudio.com/items?itemName=tauri-apps.tauri-vscode)
-  * [rust-analyzer](https://marketplace.visualstudio.com/items?itemName=rust-lang.rust-analyzer)
-
-### Сборка из исходников
-
-Предварительно установите **Node.js** (18+) и **Rust** (cargo, rustup).
-
-```bash
-# 1. Клонирование репозитория
-git clone https://github.com/pizxxxxx/LomifyNEXT.git
-cd LomifyNEXT
-
-# 2. Установка зависимостей
-npm install
-
-# 3. Запуск в режиме разработки
-npm run tauri dev
-
-# 4. Сборка релизной версии
-npm run tauri build
+```powershell
+git clone https://github.com/pizxxxxx/LomifyNEXT-Mobile.git
+cd LomifyNEXT-Mobile
+npm ci
+npm run check
 ```
 
----
+Для запуска в браузере выполните `npm run dev` и откройте `http://127.0.0.1:1420/?mobile`.
 
-## Поддержать проект
+Для Android установите Rust, Android Studio, Android SDK и NDK, затем следуйте [инструкции сборки](docs/ANDROID.md). Из корня проекта:
 
-LomifyNEXT остаётся бесплатным приложением с открытым исходным кодом. Если проект оказался полезен, его разработку можно [поддержать через ЮMoney](https://yoomoney.ru/to/4100116984624656).
+```powershell
+npm run tauri android dev
+npm run tauri android build -- --target aarch64 --apk
+```
 
----
+Перед распространением APK нужна подпись. Для обновления существующей установки используйте тот же ключ. [Порядок публикации и обновлений](docs/ANDROID_UPDATES.md).
+
+Пути модулей и проверки описаны в [карте проекта](docs/PROJECT_MAP.md). Подготовка iOS описана отдельно в [IOS_SETUP.md](docs/IOS_SETUP.md); сборка на iPhone пока не проверена.
 
 ## Лицензия
 
-Copyright © 2026 pizx. Проект распространяется по лицензии [GNU GPL версии 3 или любой более поздней версии](LICENSE) (`GPL-3.0-or-later`).
+Copyright 2026 pizx. [GNU GPL версии 3 или любой более поздней версии](LICENSE).

@@ -1,0 +1,16 @@
+node_modules/
+.svelte-kit/
+build/
+build_output/
+dist/
+target/
+.idea/
+*.log
+.env
+.env.local
+src-tauri/gen/schemas/
+src-tauri/gen/android/app/src/main/jniLibs/
+*.apk
+*.aab
+*.apk.idsig
+LomifyNEXT-iOS-source.zip
