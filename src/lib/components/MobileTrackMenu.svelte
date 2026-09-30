@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onDestroy, untrack } from 'svelte';
+  import { onDestroy, untrack, tick } from 'svelte';
   import { slide } from 'svelte/transition';
   import { Heart, ListPlus, EyeOff, Play, Pause, X, Plus, Music2, Download, Trash2, UserRound } from 'lucide-svelte';
   import { get } from 'svelte/store';
@@ -30,6 +30,7 @@
   let menuAnimation: Animation | null = null;
   let backdropAnimation: Animation | null = null;
   let menuGeneration = 0;
+  let requestGeneration = 0;
   const liked = $derived(selected ? isTrackLiked($likedTracks, selected) : false);
 
   function stopPreview() {
@@ -130,6 +131,7 @@
   $effect(() => {
     if (!dialog) return;
     const track = requested;
+    const request = ++requestGeneration;
     untrack(() => {
       if (track) {
         selected = track;
@@ -138,10 +140,12 @@
         choosingPlaylist = false;
         creatingPlaylist = false;
       }
-      animateMenu(!!track);
+      // Mount the heading/actions before showModal chooses focus and starts motion.
+      if (track) void tick().then(() => { if (request === requestGeneration) animateMenu(true); });
+      else animateMenu(false);
     });
   });
-  onDestroy(() => { ++menuGeneration; menuAnimation?.cancel(); backdropAnimation?.cancel(); stopPreview(); });
+  onDestroy(() => { ++requestGeneration; ++menuGeneration; menuAnimation?.cancel(); backdropAnimation?.cancel(); stopPreview(); });
 </script>
 
 <dialog bind:this={dialog} class="mobile-track-dialog" class:no-blur={$settings.mobileBlur === false} onclose={onDialogClose} oncancel={(event) => { event.preventDefault(); close(); }} aria-label="Действия с треком">

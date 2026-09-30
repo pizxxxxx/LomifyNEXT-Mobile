@@ -4,6 +4,7 @@
   import { currentView, currentTrack, isPlaying, queue, likedTracks, settings, notify } from '$lib/stores';
   import { checkMobileUpdate, mobileUpdateState, openMobileUpdate } from '$lib/mobileUpdates';
   import { mobileReveal } from '$lib/actions/mobileReveal';
+  import { afterMobilePaint } from '$lib/utils/mobilePaint';
   import { mobileHold } from '$lib/actions/mobileHold';
   import { mobileDepth } from '$lib/actions/mobileDepth';
   import { mobileTrackKey, mobileTrackMenu, openMobileTrackMenu, stopScWave } from '$lib/mobileTracks';
@@ -19,7 +20,7 @@
   import MobileEqualizer from './MobileEqualizer.svelte';
   import ArtistTag from './ArtistTag.svelte';
   import { coverUrlAtSize, coverUrlForTrack, downloadedCoverCache, handleArtworkError, handleArtworkLoad } from '$lib/offlineCovers';
-  function waveTransition(_node: Element, _params: unknown, options: { direction: 'in' | 'out' | 'both' }) {
+  function waveTransition(_node: HTMLElement, _params: unknown, options: { direction: 'in' | 'out' | 'both' }) {
     const reduced = $settings.mobileMotion === false || matchMedia('(prefers-reduced-motion: reduce)').matches;
     return { duration: reduced ? 0 : options.direction === 'out' ? 180 : 260, easing: (t: number) => 1 - Math.pow(1 - t, 4), css: (t: number) => `opacity:${t};transform:translateY(${(1 - t) * 24}px)` };
   }
@@ -32,6 +33,9 @@
   ] as const;
   let main: HTMLElement;
   let visited = $state<string[]>(['home']);
+  let readyView = $state<string>('home');
+  let keyboardInput = $state(false);
+  let cancelMount = () => {};
   function navigate(view: typeof $currentView) {
     if (view === $currentView) return;
     currentView.set(view);
@@ -45,7 +49,15 @@
     let restoring = false;
     let previous = $currentView;
     const release = currentView.subscribe(view => {
-      if (!visited.includes(view)) visited = [...visited, view];
+      cancelMount();
+      if (visited.includes(view)) readyView = view;
+      else {
+        readyView = '';
+        cancelMount = afterMobilePaint(() => {
+          if (tabs.some(tab => tab.id === view)) visited = [...visited, view];
+          readyView = view;
+        });
+      }
       if (view === previous) return;
       previous = view;
       if (!restoring) history.pushState({ mobileView: view }, '');
@@ -71,6 +83,7 @@
     return () => {
       document.removeEventListener('visibilitychange', checkOnResume);
       release();
+      cancelMount();
       window.removeEventListener('popstate', back);
       window.removeEventListener('lomify:android-back', androidBack);
     };
@@ -83,7 +96,15 @@
   }
 </script>
 
-<div class="mobile-app" data-view={$currentView} use:mobileDepth={{ enabled: $settings.mobileDepthMotion === true && $settings.mobileMotion !== false, view: $currentView }} data-motion={$settings.mobileMotion === false ? 'off' : 'on'} data-blur={$settings.mobileBlur ? 'on' : 'off'} data-text-size={$settings.mobileTextSize} data-text-weight={$settings.mobileTextWeight}>
+{#snippet opening(title: string)}
+  <div class="mobile-opening" role="status" aria-label="Открываем раздел">
+    <h1>{title}</h1>
+    <div class="mobile-opening-card" aria-hidden="true"><span class="mobile-loading-bar"></span><span class="mobile-loading-bar"></span><span class="mobile-loading-bar"></span></div>
+  </div>
+{/snippet}
+
+<svelte:window onpointerdown={() => keyboardInput = false} onkeydown={() => keyboardInput = true} />
+<div class="mobile-app" data-input={keyboardInput ? 'keyboard' : 'pointer'} data-view={$currentView} use:mobileDepth={{ enabled: $settings.mobileDepthMotion === true && $settings.mobileMotion !== false, view: $currentView }} data-motion={$settings.mobileMotion === false ? 'off' : 'on'} data-blur={$settings.mobileBlur ? 'on' : 'off'} data-text-size={$settings.mobileTextSize} data-text-weight={$settings.mobileTextWeight}>
   <header class="mobile-header">
     {#if !tabs.some(t => t.id === $currentView)}
       <button class="mobile-icon-button" aria-label="Назад" onclick={() => history.back()}><ArrowLeft size={24} /></button>
@@ -93,7 +114,7 @@
     <span>Lomify<span class="mobile-brand-accent">NEXT</span></span>
     <span class="mobile-edition">MOBILE</span>
   </header>
-  <main bind:this={main} class="mobile-content" class:has-track={!!$currentTrack} tabindex="-1">
+  <main bind:this={main} class="mobile-content" class:has-track={!!$currentTrack} aria-busy={readyView !== $currentView} tabindex="-1">
     <div class="mobile-pane" hidden={$currentView !== 'home'} use:mobileReveal={$currentView === 'home'}>
       <section class="mobile-home">
         <h1>Главная</h1>
@@ -120,7 +141,7 @@
         {:else if error}
           <div class="mobile-empty"><Music2 size={32} /><h3>Музыка пока не загрузилась</h3><p>{error}</p><button class="mobile-primary" onclick={retry}>Попробовать снова</button></div>
         {:else if tracks.length}
-          <div class="mobile-album-grid">
+          <div class="mobile-album-grid" use:mobileReveal={true}>
             {#each tracks.filter(track => !$settings.mobileHiddenTracks.includes(mobileTrackKey(track))) as track}
               <div class="mobile-album">
                 <button class="mobile-album-play" use:mobileHold={{ onHold: () => openMobileTrackMenu(track) }} onclick={() => play(track)} aria-label={`Слушать ${track.title}, ${track.artist}. Удерживай для меню`}>
@@ -138,21 +159,22 @@
       </section>
     </div>
     {#each tabs.filter(tab => tab.id !== 'home') as tab (tab.id)}
-      {#if visited.includes(tab.id)}
-        <div class="mobile-pane" hidden={$currentView !== tab.id} use:mobileReveal={$currentView === tab.id}>
+        <div class="mobile-pane" hidden={$currentView !== tab.id} use:mobileReveal={$currentView === tab.id ? `${tab.id}:${visited.includes(tab.id)}` : false}>
+          {#if visited.includes(tab.id)}
           {#if tab.id === 'search'}<Search />
           {:else if tab.id === 'library'}<Library />
           {:else}<MobileSettings />{/if}
+          {:else if $currentView === tab.id}{@render opening(tab.label)}{/if}
         </div>
-      {/if}
     {/each}
     {#if $currentView === 'wave'}
-      <div class="mobile-pane mobile-wave-pane" transition:waveTransition><MobileWave /></div>
+      <div class="mobile-pane mobile-wave-pane" transition:waveTransition onintrostart={(event) => (event.currentTarget as HTMLElement).inert = false} onoutrostart={(event) => (event.currentTarget as HTMLElement).inert = true}>{#if readyView === 'wave'}<MobileWave />{:else}{@render opening($settings.mobileWaveName === 'wave' ? 'Моя Волна' : 'Моя Тусня')}{/if}</div>
     {/if}
-    {#if $currentView === 'equalizer'}<div class="mobile-pane" use:mobileReveal={true}><MobileEqualizer /></div>{/if}
+    {#if $currentView === 'equalizer'}<div class="mobile-pane" use:mobileReveal={readyView === 'equalizer' ? 'ready' : 'opening'}>{#if readyView === 'equalizer'}<MobileEqualizer />{:else}{@render opening('Эквалайзер')}{/if}</div>{/if}
     {#if $currentView === 'lyrics' || $currentView === 'artist'}
-      <div class="mobile-pane" class:mobile-artist-pane={$currentView === 'artist'} use:mobileReveal={true}>
-        {#if $currentView === 'lyrics'}<Lyrics letterSync={$settings.mobileLyricsLetterSync} mobileMode={true} />{:else}<MobileArtistPage />{/if}
+      <div class="mobile-pane" class:mobile-artist-pane={$currentView === 'artist'} use:mobileReveal={`${$currentView}:${readyView}`}>
+        {#if readyView !== $currentView}{@render opening($currentView === 'lyrics' ? 'Текст песни' : 'Исполнитель')}
+        {:else if $currentView === 'lyrics'}<Lyrics letterSync={$settings.mobileLyricsLetterSync} mobileMode={true} />{:else}<MobileArtistPage />{/if}
       </div>
     {/if}
   </main>

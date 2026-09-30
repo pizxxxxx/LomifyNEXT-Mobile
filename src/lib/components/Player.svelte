@@ -1,6 +1,9 @@
 <script lang="ts">
   import { onMount, onDestroy, tick as svelteTick } from 'svelte';
   import { cubicOut } from 'svelte/easing';
+  import { fade } from 'svelte/transition';
+  import { mobileReveal } from '$lib/actions/mobileReveal';
+  import { afterMobilePaint } from '$lib/utils/mobilePaint';
   import { Play, Pause, ChevronDown, Music2, MoreHorizontal, Plus, SlidersHorizontal } from 'lucide-svelte';
   import { mobileHold } from '$lib/actions/mobileHold';
   import { isScWaveTrack, mobileNextQueueIndex, mobileTrackMenu, refillScWave } from '$lib/mobileTracks';
@@ -9,6 +12,7 @@
   export let mobile = false;
   let mobileExpanded = false;
   let mobileShowLyrics = true;
+  let mobileDetailsReady = false;
   let mobileSeekTime: number | null = null;
   let mobileDisplayTime = 0;
   let lastMobileRenderAt = 0;
@@ -61,10 +65,14 @@
     let previous = false;
     let trigger: HTMLElement | null = null;
     const blocked = new Map<HTMLElement, boolean>();
+    let cancelDetails = () => {};
     function update(expanded: boolean) {
       if (expanded === previous) return;
       previous = expanded;
+      cancelDetails();
       if (expanded) {
+        mobileDetailsReady = false;
+        cancelDetails = afterMobilePaint(() => { if (previous) mobileDetailsReady = true; });
         trigger = document.querySelector<HTMLElement>('.mobile-player:not(.expanded) .mobile-mini-info');
         document.querySelectorAll<HTMLElement>('.mobile-header, .mobile-content, .mobile-nav').forEach(el => {
           blocked.set(el, el.inert); el.inert = true;
@@ -89,7 +97,11 @@
     }
     node.addEventListener('keydown', keydown);
     update(open);
-    return { update, destroy() { update(false); node.removeEventListener('keydown', keydown); } };
+    return { update, destroy() { update(false); cancelDetails(); mobileDetailsReady = false; node.removeEventListener('keydown', keydown); } };
+  }
+  function mobileLyricsFade(node: HTMLElement) {
+    const off = $settings.mobileMotion === false || node.closest('[data-input="keyboard"]');
+    return fade(node, { duration: off ? 0 : mobileReducedMotion ? 120 : 180, easing: cubicOut });
   }
   import { Volume2, SkipBack, SkipForward, Shuffle, Repeat, Mic2, Radio, Heart, Share2, Download, Check, Trash2, Loader2 } from 'lucide-svelte';
   import { MorphIcon } from 'morphicons/svelte';
@@ -1517,11 +1529,17 @@
             <button class="mobile-icon-button" aria-label="Действия с треком" on:click={() => mobileTrackMenu.set($currentTrack)}><MoreHorizontal size={25} /></button>
           </div>
         </div>
-        {#if mobileShowLyrics}
-          <section class="mobile-now-lyrics" aria-label="Текст песни">
-            <Lyrics letterSync={$settings.mobileLyricsLetterSync} mobileMode embedded />
-          </section>
-        {:else}<div class="mobile-now-spacer" aria-hidden="true"></div>{/if}
+        <div class="mobile-now-middle">
+          {#if mobileShowLyrics}
+            <section class="mobile-now-lyrics" aria-label="Текст песни" aria-busy={!mobileDetailsReady} transition:mobileLyricsFade>
+              {#if mobileDetailsReady}
+                <div class="mobile-now-lyrics-content" use:mobileReveal={true}><Lyrics letterSync={$settings.mobileLyricsLetterSync} mobileMode embedded /></div>
+              {:else}
+                <div class="mobile-lyrics-preparing" aria-hidden="true"><span class="mobile-loading-bar"></span><span class="mobile-loading-bar"></span><span class="mobile-loading-bar"></span></div>
+              {/if}
+            </section>
+          {/if}
+        </div>
         <div class="mobile-now-bottom">
           <label class="mobile-seek"><span class="sr-only">Позиция воспроизведения</span><input type="range" min="0" max={duration || 1} step="1" value={mobileSeekTime ?? mobileDisplayTime} style={`--seek-progress:${duration ? Math.min(100, (mobileSeekTime ?? mobileDisplayTime) / duration * 100) : 0}%`} disabled={!duration} on:input={(event) => mobileSeekTime = Number(event.currentTarget.value)} on:change={(event) => { seekTo(Number(event.currentTarget.value)); mobileSeekTime = null; }} on:pointercancel={() => mobileSeekTime = null} /></label>
           <div class="mobile-time"><span>{formatTime(mobileSeekTime ?? mobileDisplayTime)}</span><span>{formatTime(duration)}</span></div>

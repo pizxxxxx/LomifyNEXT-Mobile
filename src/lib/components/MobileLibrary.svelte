@@ -5,6 +5,7 @@
   import { Heart, Music2, ArrowLeft, Play, Plus, MoreHorizontal, Download, Check, Trash2, ChevronRight, Pencil, ImagePlus, Shuffle, UserRound, ListMusic, Settings as SettingsIcon } from 'lucide-svelte';
   import { likedTracks, playlists, currentTrack, isPlaying, queue, settings, notify, currentView } from '$lib/stores';
   import { mobileHold } from '$lib/actions/mobileHold';
+  import { mobileReveal } from '$lib/actions/mobileReveal';
   import { createMobilePlaylist, deleteMobilePlaylist, mobileTrackKey, openMobileTrackMenu, renameMobilePlaylist, restoreMobilePlaylistOrder, shuffleMobilePlaylist, stopScWave } from '$lib/mobileTracks';
   import { createMobileShakeDetector } from '$lib/mobileShake';
   import { loadMobilePlaylistCovers, mobilePlaylistCoverUrls, prepareMobilePlaylistCover, removeMobilePlaylistCover, setMobilePlaylistCover } from '$lib/mobilePlaylistCovers';
@@ -17,14 +18,18 @@
   import { goToArtist } from '$lib/utils/navigation';
   type LibrarySection = 'overview' | 'likes' | 'downloads' | 'playlist' | 'playlists' | 'artists';
   let section = $state<LibrarySection>('overview');
+  const hiddenTracks = $derived(new Set($settings.mobileHiddenTracks));
   let recentTracks = $derived.by(() => {
     const seen = new Set<string>();
-    return [...$likedTracks, ...$mobileDownloads].filter(track => {
+    const recent: any[] = [];
+    for (const list of [$likedTracks, $mobileDownloads]) for (const track of list) {
       const key = mobileTrackKey(track);
-      if (seen.has(key) || $settings.mobileHiddenTracks.includes(key)) return false;
+      if (seen.has(key) || hiddenTracks.has(key)) continue;
       seen.add(key);
-      return true;
-    }).slice(0, 8);
+      recent.push(track);
+      if (recent.length === 8) return recent;
+    }
+    return recent;
   });
   let offlineOnly = $derived(section === 'downloads');
   const downloadCount = $derived(Object.values($mobileDownloadJobs).filter(job => job.status !== 'error').length);
@@ -48,7 +53,7 @@
   let selected = $derived($playlists.find(p => p.id === playlistId));
   let undoPlaylistId = $state<string | null>(null);
   let undoOrder = $state<string[] | null>(null);
-  let tracks = $derived((selected ? selected.tracks || [] : offlineOnly ? $mobileDownloads : section === 'likes' ? $likedTracks : []).filter((track: any) => !$settings.mobileHiddenTracks.includes(mobileTrackKey(track)) && (!offlineOnly || $downloadedCoverCache.cachedUrns.has(buildTrackUrn(track)))));
+  let tracks = $derived((selected ? selected.tracks || [] : offlineOnly ? $mobileDownloads : section === 'likes' ? $likedTracks : []).filter((track: any) => !hiddenTracks.has(mobileTrackKey(track)) && (!offlineOnly || $downloadedCoverCache.cachedUrns.has(buildTrackUrn(track)))));
   let canDownloadAll = $derived(tracks.some((track: any) => !$downloadedCoverCache.cachedUrns.has(buildTrackUrn(track))));
   // The list can contain hundreds of liked tracks. Keep only the viewport plus
   // a generous buffer in the DOM; the full array still backs queue playback.
@@ -285,7 +290,7 @@
       ? 0 : enter ? 180 : 120;
   }
 </script>
-<section class="mobile-library" bind:this={libraryRoot}>
+<section class="mobile-library" bind:this={libraryRoot} use:mobileReveal={section}>
   {#if section === 'overview' || section === 'playlists' || section === 'artists'}
     {#if section !== 'overview'}<button class="mobile-library-back" onclick={backToOverview}><ArrowLeft size={20} aria-hidden="true" /> Медиатека</button>{/if}
     <div class="mobile-library-page-heading"><h1>{section === 'artists' ? 'Исполнители' : section === 'playlists' ? 'Плейлисты' : 'Медиатека'}</h1><div class="mobile-library-heading-tools">{#if section !== 'artists'}<button class="mobile-icon-button mobile-glass-button" aria-label="Создать плейлист" aria-expanded={creating} onclick={() => creating = !creating}><Plus size={23} aria-hidden="true" /></button>{/if}<button class="mobile-icon-button mobile-glass-button" aria-label="Открыть настройки" onclick={() => currentView.set('settings')}><SettingsIcon size={22} aria-hidden="true" /></button></div></div>

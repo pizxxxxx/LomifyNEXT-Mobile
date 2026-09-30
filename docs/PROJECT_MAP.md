@@ -1,7 +1,7 @@
 # LomifyNEXT project map
 
 Last verified: 2026-09-30  
-Indexed desktop base: 9.3.2. Current mobile worktree: 1.0.15 beta (see the mobile section).
+Indexed desktop base: 9.3.2. Current mobile worktree: 1.0.16 beta (see the mobile section).
 
 This file is the navigation index for the repository. Read it before broad exploration.
 It explains where a change normally belongs; source code is still the final authority.
@@ -438,8 +438,8 @@ When changing the application version, verify all of these locations:
 2. `src-tauri/Cargo.toml` — Rust package version.
 3. `src-tauri/tauri.conf.json` — Tauri bundle version.
 4. `src/lib/version.ts` — UI-visible version and channel.
-5. `src/lib/changelog.ts` for in-app notices and `docs/releases/v1.0.15.md` for current GitHub release notes.
-   Current GitHub notes describe changes since the published 1.0.14 release.
+5. `src/lib/changelog.ts` for in-app notices and `docs/releases/v1.0.16.md` for current GitHub release notes.
+   Current GitHub notes describe changes since the published 1.0.15 release.
    The 1.0.12 GitHub notes aggregate changes since the last published version, 1.0.10;
    the intermediate local build 1.0.11 was not published.
 6. In the mobile worktree, `src-tauri/tauri.conf.json > bundle.android.versionCode`
@@ -471,12 +471,19 @@ owned by `src/lib/mobile.ts` (Android/iOS user agent; `?mobile` for development 
 
 - `src/lib/components/MobileApp.svelte`: phone header, four bottom tabs, home feed,
   native/browser back history, retained lazy-mounted tabs with independent scroll regions.
+  `utils/mobilePaint.ts` schedules first mounts after a navigation paint and cancels
+  superseded work. Cheap tab shells show loading placeholders first; panes are
+  positioned independently so outgoing Wave content cannot displace incoming views.
+  Wave transition events make the exiting pane inert.
   `src/mobile.css` owns floating pill navigation and mini-player, artwork-led artist
   layout and shared phone typography; the selected Lomify accent/font settings persist.
   Home labels the selected recommendation source; `+page.svelte` ignores stale feed
   responses after a source change. Mobile `api.getTrendingTracks` never falls back to
   SoundCloud when Yandex is selected and reports a missing token or failed source.
-  `src/lib/actions/mobileReveal.ts` cancels/replaces lightweight WAAPI tab entrances.
+  `src/lib/actions/mobileReveal.ts` owns keyed WAAPI entrances for tabs, library
+  sections and artist content. Interrupted entrances continue from computed position;
+  motion-off, reduced-motion and keyboard navigation are respected. Buttons show the
+  pressed state immediately; loading placeholders animate only transform.
   Reuses Search and Lyrics, while `MobileArtistPage.svelte` owns the phone artist view.
   Home artist names use `ArtistTag` links; recommendation cards expose a three-dot track menu.
   Mobile Search uses the same menu for its best match and track rows, with like/download actions
@@ -519,7 +526,8 @@ owned by `src/lib/mobile.ts` (Android/iOS user agent; `?mobile` for development 
   track guards and request generations; refills cannot leak into a restarted session.
   The UI cancels pending startup on exit or after 25 seconds; active playback persists.
 - `MobileLibrary.svelte`: horizontal collection shelf, category rows and recent-track
-  artwork grid; separate playlists and saved-artists screens plus liked, downloaded and
+  artwork grid; recent selection stops at eight visible unique tracks and uses a hidden-ID
+  Set. Separate playlists and saved-artists screens plus liked, downloaded and
   playlist track screens, playlist creation/playback, local title/cover editing,
   shake/manual playlist shuffle with top undo (enabled by `settings.mobileShakeShuffle`),
   per-track downloads through the three-dot menu and sequential bulk downloads. Track rows have matching 88px CSS/virtualization
@@ -548,7 +556,9 @@ owned by `src/lib/mobile.ts` (Android/iOS user agent; `?mobile` for development 
   dialog; audio preview starts only from its button and pauses/restores native playback.
   Its compact cover/title header and highlighted next-in-queue action are shared across phone views.
 - Mobile `Player.svelte` mounts shared `Lyrics.svelte` in its full-player middle region
-  by default, with large left-aligned text and a hide/show action. A compact artwork/title
+  by default, with large left-aligned text and a hide/show action. Lyrics mount after
+  the controls paint; an always-present middle slot keeps transport geometry stable
+  during the opacity-only lyrics transition. A compact artwork/title
   header owns artist/like/menu actions; bottom transport is followed by lyrics/shuffle/
   repeat/EQ actions. Portrait and landscape layouts keep lyrics above/beside controls.
   The persistent line/letter
@@ -564,6 +574,8 @@ owned by `src/lib/mobile.ts` (Android/iOS user agent; `?mobile` for development 
   cannot receive an accidental Like action; fresh pointer gestures reset suppression.
   `MobileTrackMenu.svelte` owns interruptible WAAPI dialog/backdrop entry and exit;
   content and the native focus trap stay mounted until the closing motion finishes.
+  Opening waits for the heading/actions DOM flush before focus and motion; request
+  generations discard stale opens.
 - `audio/prefetch.rs` owns one transient direct-audio download, capped at 16 MiB and
   15 minutes, cancellable on queue replacement. `audio_prefetch_url` is registered in
   `lib.rs`; mobile `audio/engine.rs` consumes ready/in-flight bytes before downloading.
@@ -571,6 +583,8 @@ owned by `src/lib/mobile.ts` (Android/iOS user agent; `?mobile` for development 
   `yandex.ts` shares signed-link requests for 90 seconds (account/track/data-saver key,
   64 entries); `getAudioUrl > fresh` bypasses them after CDN rejection. `api.ts` shares
   concurrent lyric requests between the player and lyric view.
+  `node scripts/mobile-motion-test.mjs` covers paint ordering, stale navigation,
+  interrupted entrances and motion/input preferences without real accounts.
   `node scripts/mobile-hold-test.mjs` covers modal-release protection; existing
   mobile feature/Wave tests cover explicit-next priority and station continuity.
   `node scripts/mobile-stream-test.mjs` covers signed-link reuse, expiry, forced
@@ -621,8 +635,8 @@ owned by `src/lib/mobile.ts` (Android/iOS user agent; `?mobile` for development 
 - `src-tauri/gen/android/.../MainActivity.kt` disables WebView pinch zoom and allows
   user-started delayed preview playback.
 - `src/lib/changelog.ts`: structured Android preview notes for this mobile worktree.
-  Android version is `1.0.15` in npm/Cargo/Tauri metadata and `src/lib/version.ts`.
-  `bundle.android.versionCode` is 9010006, above earlier Android test installs.
+  Android version is `1.0.16` in npm/Cargo/Tauri metadata and `src/lib/version.ts`.
+  `bundle.android.versionCode` is 9010007, above earlier Android test installs.
 - `src/lib/mobileUpdateCore.ts`: pure semantic-version comparison and strict GitHub
   ARM64 APK asset selection; the APK name, not its GitHub release tag, is authoritative.
   `src/lib/mobileUpdates.ts` checks the public GitHub releases API on Android launch/
@@ -665,7 +679,7 @@ owned by `src/lib/mobile.ts` (Android/iOS user agent; `?mobile` for development 
   `app/mod.rs` now keep desktop plugins, tray, FFmpeg and media controls off both
   mobile targets. iOS uses the mobile Symphonia decode path and persistent app-data
   downloads. `src-tauri/tauri.conf.json > bundle.iOS` sets iOS 15 minimum and build
-  number 10007. `src-tauri/icons/ios/` uses the current plum PC artwork. This is not
+  number 10008. `src-tauri/icons/ios/` uses the current plum PC artwork. This is not
   an iOS build or a verified sound path; the iOS audio session, background playback,
   lock-screen controls and WKWebView network behavior need Mac/iPhone testing.
 - `src-tauri/Info.ios.plist` allows only local networking for the app's 127.0.0.1
@@ -736,3 +750,8 @@ Bluetooth routing and real-device battery behavior still need device verificatio
   9010006, ARM64, minimum API 26, same signing key as 1.0.14 and 16 KiB page alignment.
   Browser QA uses synthetic timed lyrics at 320 and 375 pixel widths, normal/large
   text and Inter, Comfortaa, Unbounded and Golos; no real-phone smoke test performed.
+
+- `LomifyNEXT-1.0.16-arm64.apk`: mobile motion and first-paint improvements; Android
+  versionCode 9010007, ARM64, minimum API 26, same signing key as 1.0.15 and
+  16 KiB page alignment. Browser QA uses synthetic data with 1080 liked tracks at
+  375x812 and 812x375; no real-phone smoke test performed.

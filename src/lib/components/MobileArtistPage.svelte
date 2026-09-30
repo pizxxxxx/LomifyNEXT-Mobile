@@ -5,13 +5,14 @@
   import { getArtistAlbums, getArtistProfile, getArtistTracks, getAlbumTracks, trackByArtist, type ArtistSource } from '$lib/api';
   import { coverUrlAtSize, coverUrlForTrack, downloadedCoverCache, handleArtworkError, handleArtworkLoad } from '$lib/offlineCovers';
   import { mobileHold } from '$lib/actions/mobileHold';
+  import { mobileReveal } from '$lib/actions/mobileReveal';
   import { mobileTrackMenu, stopScWave } from '$lib/mobileTracks';
   import { loadMobileArtists, mobileArtistKey, mobileSavedArtists, toggleMobileArtist } from '$lib/mobileArtists';
 
   let source = $state<ArtistSource>($settings.searchSource === 'yandex' && $settings.yandexToken ? 'yandex' : 'soundcloud');
   let tab = $state<'tracks' | 'albums'>('tracks');
-  let tracks = $state<any[]>([]);
-  let albums = $state<any[]>([]);
+  let tracks = $state.raw<any[]>([]);
+  let albums = $state.raw<any[]>([]);
   let profile = $state<Awaited<ReturnType<typeof getArtistProfile>>>(null);
   let loadingTracks = $state(true);
   let loadingAlbums = $state(true);
@@ -171,7 +172,7 @@
     {#if loadingTracks}
       <div class="mobile-artist-status" role="status"><Loader2 size={22} class="animate-spin" /> Загружаем треки</div>
     {:else if tracks.length}
-      <div class="mobile-artist-track-list">
+      <div class="mobile-artist-track-list" use:mobileReveal={true}>
         {#each tracks.slice(0, visibleCount) as track, index (index)}
           <div class="mobile-artist-track">
             <button type="button" class="mobile-artist-track-main" use:mobileHold={{ onHold: () => mobileTrackMenu.set(track) }} onclick={() => play(track, tracks)} aria-label={`Слушать ${track.title}`}>
@@ -187,7 +188,7 @@
       <div class="mobile-artist-empty"><Music2 size={26} aria-hidden="true" /><p>{loadError ? 'Не удалось загрузить треки.' : 'Треков на этой площадке пока нет.'}</p><button class="mobile-secondary" onclick={() => retry++}><RefreshCw size={17} aria-hidden="true" /> Повторить</button></div>
     {/if}
   {:else if openAlbum}
-    <div class="mobile-artist-album-detail">
+    <div class="mobile-artist-album-detail" use:mobileReveal={String(openAlbum.id)}>
       <button type="button" class="mobile-artist-back" onclick={closeAlbum}><ChevronLeft size={19} aria-hidden="true" /> Все релизы</button>
       <div class="mobile-artist-album-head">
         <span class="mobile-artist-album-art">{#if openAlbum.coverUrl}<img src={coverUrlAtSize(openAlbum.coverUrl, 240)} alt="" loading="lazy" decoding="async" />{:else}<Disc3 size={34} aria-hidden="true" />{/if}</span>
@@ -195,14 +196,14 @@
       </div>
       {#if albumTracks === null}<div class="mobile-artist-status" role="status"><Loader2 size={22} class="animate-spin" /> Загружаем релиз</div>
       {:else if !albumTracks.length}<p class="mobile-hint">Треки этого релиза не загрузились. Вернись к списку и попробуй снова.</p>
-      {:else}<div class="mobile-artist-track-list">{#each albumTracks as track, index (index)}
+      {:else}<div class="mobile-artist-track-list" use:mobileReveal={true}>{#each albumTracks as track, index (index)}
         <div class="mobile-artist-track"><button type="button" class="mobile-artist-track-main" use:mobileHold={{ onHold: () => mobileTrackMenu.set(track) }} onclick={() => play(track, albumTracks || [])}><span class="mobile-artist-track-art">{#if track.coverUrl}<img src={coverUrlAtSize(coverUrlForTrack(track, $downloadedCoverCache), 120)} alt="" loading="lazy" decoding="async" onerror={(event) => handleArtworkError(event, track.coverUrl, 120)} onload={handleArtworkLoad} />{:else}<Music2 size={22} aria-hidden="true" />{/if}</span><span class="mobile-artist-track-copy"><strong>{track.title}</strong><small>{track.artist}</small></span></button><button type="button" class="mobile-icon-button mobile-artist-track-menu" aria-label={`Действия с треком ${track.title}`} onclick={() => mobileTrackMenu.set(track)}><MoreHorizontal size={22} aria-hidden="true" /></button></div>
       {/each}</div>{/if}
     </div>
   {:else if loadingAlbums}
     <div class="mobile-artist-status" role="status"><Loader2 size={22} class="animate-spin" /> Загружаем релизы</div>
   {:else if albums.length}
-    <div class="mobile-artist-album-grid">
+    <div class="mobile-artist-album-grid" use:mobileReveal={true}>
       {#each albums as album (album.id)}
         <button type="button" class="mobile-artist-album" onclick={() => showAlbum(album)}>
           <span class="mobile-artist-album-art">{#if album.coverUrl}<img src={coverUrlAtSize(album.coverUrl, 300)} alt="" loading="lazy" decoding="async" />{:else}<Disc3 size={35} aria-hidden="true" />{/if}</span>
