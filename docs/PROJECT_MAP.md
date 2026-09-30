@@ -411,7 +411,7 @@ When changing the application version, verify all of these locations:
 3. `src-tauri/tauri.conf.json` — Tauri bundle version.
 4. `src/lib/version.ts` — UI-visible version and channel.
 5. `src/lib/changelog.ts` for in-app notices and `docs/releases/v1.0.13.md` for current GitHub release notes.
-   Current GitHub notes retain the requested 1.0.10 baseline and include 1.0.11/1.0.12 changes.
+   Current GitHub notes describe changes since the published 1.0.12 release.
    The 1.0.12 GitHub notes aggregate changes since the last published version, 1.0.10;
    the intermediate local build 1.0.11 was not published.
 6. In the mobile worktree, `src-tauri/tauri.conf.json > bundle.android.versionCode`
