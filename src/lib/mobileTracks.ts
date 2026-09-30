@@ -26,11 +26,20 @@ export function isMobilePlaylistExcluded(id: string): boolean {
 }
 
 export function removedMobilePlaylistCount(): number {
-  return removedPlaylistIds().length;
+  let synced: string[] = [];
+  try {
+    const value = JSON.parse(localStorage.getItem('lomifynext_playlist_sync_excluded') || '[]');
+    if (Array.isArray(value)) synced = value.filter((id): id is string => typeof id === 'string')
+      .map(id => id.split(':').slice(2).join(':'));
+  } catch { /* No synchronized exclusions on this device. */ }
+  return new Set([...removedPlaylistIds(), ...synced]).size;
 }
 
 export function allowMobilePlaylistReimport(): void {
-  if (typeof localStorage !== 'undefined') localStorage.removeItem(REMOVED_PLAYLISTS_KEY);
+  if (typeof localStorage !== 'undefined') {
+    localStorage.removeItem(REMOVED_PLAYLISTS_KEY);
+    localStorage.removeItem('lomifynext_playlist_sync_excluded');
+  }
 }
 
 export function deleteMobilePlaylist(id: string): boolean {

@@ -1,7 +1,7 @@
 # LomifyNEXT project map
 
 Last verified: 2026-09-30  
-Indexed desktop base: 9.3.2. Current mobile worktree: 1.0.13 beta (see the mobile section).
+Indexed desktop base: 9.3.2. Current mobile worktree: 1.0.14 beta (see the mobile section).
 
 This file is the navigation index for the repository. Read it before broad exploration.
 It explains where a change normally belongs; source code is still the final authority.
@@ -344,6 +344,34 @@ in `src/routes/+layout.svelte` from the Tauri window's physical size divided by 
 scale factor, using 1920×1080 as 100%; the manual options store their percentage as a
 string. Applying it requires `core:webview:allow-set-webview-zoom` in the main capability.
 
+## Playlist synchronization
+
+- `src/lib/playlistSync.ts`: account-bound serialized reconciliation, startup/resume/online
+  scheduling, local publication to private Yandex playlists, pause/resume and conflict
+  resolution. Mounted from `src/routes/+layout.svelte`; no new Tauri command.
+- `src/lib/playlistSyncCore.ts`: occurrence-preserving three-way merge of title/order/
+  track membership. Concurrent independent edits merge; opposing names/orders require
+  an explicit choice. Unbased legacy copies keep all tracks on initial enrollment.
+- `src/lib/yandexPlaylists.ts`: complete authenticated snapshots and form POST create/
+  name/change requests through `yandex.ts > ymJson`. Content writes carry the server
+  revision and retry conflicts against fresh snapshots. Only own playlists are writable;
+  mixed-service lists are rejected before publication.
+- `src/lib/api.ts > getSoundCloudSyncPlaylists`: strict paginated public snapshots with
+  track hydration and unavailable placeholders; SoundCloud remains pull-only.
+- `PlaylistSyncSettings.svelte` is embedded in service connections/settings;
+  `PlaylistSyncControl.svelte` owns per-playlist linking, pause, retry and version choice.
+- `settings.syncYandexPlaylists` and `settings.syncSoundCloudPlaylists` default to false.
+  A playlist's `sync` field persists its provider/account/remote identity, baseline,
+  revision, pause state, conflict and error beside ordinary playlist data. Unsent local
+  differences survive restart/offline failure. `playlistSyncStorage.ts` adapts the
+  desktop IndexedDB flush or mobile synchronous localStorage persistence.
+- Hidden synchronized playlists are recorded in `lomifynext_playlist_sync_excluded`
+  by provider/account/remote ID. Mobile's existing imported-playlist exclusions also
+  apply. Removing a whole playlist in Lomify never calls remote delete.
+- `node scripts/playlist-sync-test.mjs` verifies merging, duplicate/empty lists, native
+  request payloads, revision retries, offline edits, account switching, writes concurrent
+  with local edits, conflict resolution, private publication and read-only SoundCloud.
+
 ## 7. Shared Rust crates
 
 The active helper crates are at repository-root `utils/`:
@@ -410,7 +438,7 @@ When changing the application version, verify all of these locations:
 2. `src-tauri/Cargo.toml` — Rust package version.
 3. `src-tauri/tauri.conf.json` — Tauri bundle version.
 4. `src/lib/version.ts` — UI-visible version and channel.
-5. `src/lib/changelog.ts` for in-app notices and `docs/releases/v1.0.13.md` for current GitHub release notes.
+5. `src/lib/changelog.ts` for in-app notices and `docs/releases/v1.0.14.md` for current GitHub release notes.
    Current GitHub notes describe changes since the published 1.0.12 release.
    The 1.0.12 GitHub notes aggregate changes since the last published version, 1.0.10;
    the intermediate local build 1.0.11 was not published.
@@ -513,8 +541,8 @@ owned by `src/lib/mobile.ts` (Android/iOS user agent; `?mobile` for development 
   incoming sync. Mobile single/bulk deletion can remain local or queue explicit
   Yandex remote unlike operations. Remote bulk deletion first reads all account
   like IDs, including items not imported to the phone. SoundCloud removal remains local-only.
-- `MobileConnections.svelte`: imports SoundCloud public playlists and local copies
-  of connected Yandex playlists through `getYandexUserPlaylists` in `yandex.ts`;
+- `MobileConnections.svelte`: imports/synchronizes public SoundCloud and connected
+  Yandex playlists through `playlistSync.ts`;
   deleted imported IDs stay excluded until reset in `MobileSettings.svelte`.
 - `MobileTrackMenu.svelte` and `actions/mobileHold.ts`: long-press opens the native
   dialog; audio preview starts only from its button and pauses/restores native playback.
@@ -591,8 +619,8 @@ owned by `src/lib/mobile.ts` (Android/iOS user agent; `?mobile` for development 
 - `src-tauri/gen/android/.../MainActivity.kt` disables WebView pinch zoom and allows
   user-started delayed preview playback.
 - `src/lib/changelog.ts`: structured Android preview notes for this mobile worktree.
-  Android version is `1.0.13` in npm/Cargo/Tauri metadata and `src/lib/version.ts`.
-  `bundle.android.versionCode` is 9010004, above earlier Android test installs.
+  Android version is `1.0.14` in npm/Cargo/Tauri metadata and `src/lib/version.ts`.
+  `bundle.android.versionCode` is 9010005, above earlier Android test installs.
 - `src/lib/mobileUpdateCore.ts`: pure semantic-version comparison and strict GitHub
   ARM64 APK asset selection; the APK name, not its GitHub release tag, is authoritative.
   `src/lib/mobileUpdates.ts` checks the public GitHub releases API on Android launch/
@@ -635,7 +663,7 @@ owned by `src/lib/mobile.ts` (Android/iOS user agent; `?mobile` for development 
   `app/mod.rs` now keep desktop plugins, tray, FFmpeg and media controls off both
   mobile targets. iOS uses the mobile Symphonia decode path and persistent app-data
   downloads. `src-tauri/tauri.conf.json > bundle.iOS` sets iOS 15 minimum and build
-  number 10005. `src-tauri/icons/ios/` uses the current plum PC artwork. This is not
+  number 10006. `src-tauri/icons/ios/` uses the current plum PC artwork. This is not
   an iOS build or a verified sound path; the iOS audio session, background playback,
   lock-screen controls and WKWebView network behavior need Mac/iPhone testing.
 - `src-tauri/Info.ios.plist` allows only local networking for the app's 127.0.0.1
@@ -689,7 +717,7 @@ Commands from mobile worktree root:
   9010003, ARM64 only, minimum API 26; mobile design polish. Its signing certificate matches
   1.0.11 and the final signed APK passes 16 KiB page alignment checks. Visual QA uses synthetic data at phone
   portrait/landscape sizes; no real-phone smoke test was performed for this release.
-- `LomifyNEXT-1.0.13-arm64.apk` is the current local beta build: Android versionCode
+- `LomifyNEXT-1.0.13-arm64.apk` is the preceding local beta build: Android versionCode
   9010004, ARM64 only, minimum API 26; artist/library/player redesign and saved artists.
   Uses the same direct-share signing key as 1.0.12 and 16 KiB page alignment checks.
   Browser visual QA uses synthetic data at 320x640, 375x812, 412x915 and 844x390;
@@ -699,3 +727,6 @@ SDK: Android API 26 minimum, Android Studio JBR, SDK/NDK via JAVA_HOME, ANDROID_
 NDK_HOME. Android foreground media notification and hardware transport keys have been
 smoke-tested on Pixel 8 API 36 emulator with the app backgrounded and screen off.
 Bluetooth routing and real-device battery behavior still need device verification.
+
+- `LomifyNEXT-1.0.14-arm64.apk`: playlist synchronization release; Android versionCode
+  9010005, ARM64, minimum API 26, same signing key as 1.0.13 and 16 KiB page alignment.

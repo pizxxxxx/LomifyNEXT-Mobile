@@ -1,4 +1,6 @@
 <script lang="ts">
+  import PlaylistSyncSettings from './PlaylistSyncSettings.svelte';
+  import { playlistSyncStatus, syncPlaylists } from '$lib/playlistSync';
   import { tick } from 'svelte';
   import { mobileConnectionRequest } from '$lib/mobile';
   import { Check, ChevronRight, ExternalLink, Loader2, Music2, ShieldCheck, RefreshCw, ArrowRight } from 'lucide-svelte';
@@ -97,28 +99,13 @@
       let failedPlaylists = 0;
       if (service === 'soundcloud' && $settings.scUser) {
         stage = 'Загружаем публичные плейлисты…';
-        const { getUserPlaylists } = await import('$lib/api');
-        const items = await bounded(getUserPlaylists($settings.scUser.id, { strict: true }), 120000);
-        playlists.update(existing => {
-          const fresh = items.filter((item: any) => !isMobilePlaylistExcluded(String(item.id)) && !existing.some(p => String(p.id) === String(item.id)));
-          importedPlaylists = fresh.length;
-          return [...fresh, ...existing];
-        });
+        importedPlaylists = await syncPlaylists('soundcloud');
       }
       if (service === 'yandex' && $settings.yandexToken) {
         stage = 'Загружаем плейлисты Яндекса…';
-        const { getYandexUserPlaylists } = await import('$lib/yandex');
-        const imported = await bounded(getYandexUserPlaylists($settings.yandexToken, (done, total) => {
-          stage = `Плейлисты Яндекса: ${done} из ${total}`;
-        }), 120000);
-        failedPlaylists = imported.failed;
-        playlists.update(existing => {
-          const fresh = imported.playlists.filter((item: any) => !isMobilePlaylistExcluded(String(item.id)) && !existing.some(p => String(p.id) === String(item.id)));
-          importedPlaylists = fresh.length;
-          return [...fresh, ...existing];
-        });
+        importedPlaylists = await syncPlaylists('yandex');
       }
-      const partial = result.failed.length > 0 || result.partial.length > 0;
+      const partial = result.failed.length > 0 || result.partial.length > 0 || !!$playlistSyncStatus[service].error;
       const message = `${partial || failedPlaylists ? 'Источник ответил не полностью. ' : ''}Любимые треки: +${result.added}${result.removed ? `, убрано ${result.removed}` : ''}. Новых плейлистов: ${importedPlaylists}.${failedPlaylists ? ` Не загрузилось: ${failedPlaylists}.` : ''} ${partial || failedPlaylists ? 'Можно повторить импорт позже.' : 'Открой «Медиатеку», чтобы послушать.'}`;
       if (service === 'yandex') ymStatus = message; else scStatus = message;
     } catch {
@@ -166,7 +153,8 @@
         <details class="mobile-guide-help"><summary>Не получилось получить токен?<ChevronRight size={16} aria-hidden="true" /></summary><p>Если код истёк, начни вход на сайте заново. Не закрывай его вкладку до появления токена. Другие способы — расширение и Android-приложение — описаны в репозитории автора.</p><button class="mobile-secondary" onclick={() => external(TOKEN_REPO)}>Инструкция MarshalX <ExternalLink size={16} aria-hidden="true" /></button></details>
       {:else}
         <div class="mobile-connected-note"><Check size={20} aria-hidden="true" /><span><strong>Аккаунт подключён</strong><small>{$settings.yandexUser?.hasPlus ? 'Плюс активен' : 'Для полных треков нужна подписка Плюс'}</small></span></div>
-        <p class="mobile-hint">Любимые треки сверяются при запуске. Импорт плейлистов создаёт местные копии: удаление в Lomify не затрагивает Яндекс Музыку.</p>
+        <p class="mobile-hint">Любимые треки сверяются при запуске. Для общей медиатеки на телефоне и ПК включи синхронизацию плейлистов ниже.</p>
+        <PlaylistSyncSettings provider="yandex" />
         <button class="mobile-primary" disabled={busy !== null} onclick={() => importLibrary('yandex')}>{#if busy === 'yandex'}<Loader2 class="animate-spin" size={18} />{:else}<RefreshCw size={18} />{/if}{busy === 'yandex' ? stage : 'Импортировать треки и плейлисты'}</button>
       {/if}
       <p id="mobile-ym-error" class="mobile-error" role="alert">{ymError}</p>
@@ -194,6 +182,7 @@
         </form>
       {:else}
         <div class="mobile-connected-note">{#if $settings.scUser.avatarUrl}<img src={$settings.scUser.avatarUrl} alt="" width="40" height="40" />{:else}<Check size={20} aria-hidden="true" />{/if}<span><strong>{$settings.scUser.username}</strong><small>Публичный профиль подключён</small></span></div>
+        <PlaylistSyncSettings provider="soundcloud" />
         <button class="mobile-primary" disabled={busy !== null} onclick={() => importLibrary('soundcloud')}>{#if busy === 'soundcloud'}<Loader2 class="animate-spin" size={18} />{:else}<RefreshCw size={18} />{/if}{busy === 'soundcloud' ? stage : 'Импортировать медиатеку'}</button>
         <div class="mobile-account-actions"><button class="mobile-secondary" onclick={() => currentView.set('library')}>В медиатеку <ArrowRight size={16} /></button><button class="mobile-text-button" disabled={busy !== null} onclick={() => confirming = confirming === 'soundcloud' ? null : 'soundcloud'}>Отключить</button></div>
       {/if}

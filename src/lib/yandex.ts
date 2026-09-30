@@ -441,7 +441,7 @@ function describeYmError(status: number, name: string, message: string, raw = ''
  * `error` бывает и строкой, и объектом `{ name, message }`. Разворачиваем в одном месте,
  * чтобы выше по стеку иметь либо данные, либо человеческий текст ошибки.
  */
-async function ymJson(url: string, token: string, init?: Record<string, any>): Promise<any> {
+export async function ymJson(url: string, token: string, init?: Record<string, any>): Promise<any> {
   const res = await ymFetch(url, token, init);
   const raw = await res.text();
 
@@ -468,7 +468,7 @@ async function ymJson(url: string, token: string, init?: Record<string, any>): P
       tokenLength: token.length,
       body: raw.slice(0, 300),
     });
-    throw new Error(describeYmError(res.status, name, message, raw));
+    throw Object.assign(new Error(describeYmError(res.status, name, message, raw)), { status: res.status, code: name });
   }
 
   if (body?.error) {
@@ -477,7 +477,7 @@ async function ymJson(url: string, token: string, init?: Record<string, any>): P
     const err = body.error;
     const name = typeof err === 'string' ? err : err?.name ?? '';
     const message = typeof err === 'string' ? err : err?.message ?? '';
-    throw new Error(describeYmError(200, name, message));
+    throw Object.assign(new Error(describeYmError(200, name, message)), { status: 200, code: name });
   }
 
   return body?.result ?? null;

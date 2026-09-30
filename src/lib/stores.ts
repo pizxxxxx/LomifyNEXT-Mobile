@@ -65,6 +65,8 @@ const defaultSettings = {
 
   searchSource: 'soundcloud', // 'soundcloud' | 'yandex'
   yandexToken: '', // OAuth token for Yandex Music
+  syncYandexPlaylists: false,
+  syncSoundCloudPlaylists: false,
   // Кто привязан. Лежит рядом с токеном, чтобы настройки показывали аккаунт сразу, не
   // дёргая /account/status при каждом открытии — сеть тут только для проверки при вводе.
   // `avatarUrl` необязателен: у аккаунтов, привязанных до его появления, поля в сохранённых

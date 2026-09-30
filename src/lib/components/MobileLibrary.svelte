@@ -1,4 +1,5 @@
 <script lang="ts">
+  import PlaylistSyncControl from './PlaylistSyncControl.svelte';
   import { onMount } from 'svelte';
   import { slide } from 'svelte/transition';
   import { Heart, Music2, ArrowLeft, Play, Plus, MoreHorizontal, Download, Check, Trash2, ChevronRight, Pencil, ImagePlus, Shuffle, UserRound, ListMusic, Settings as SettingsIcon } from 'lucide-svelte';
@@ -315,6 +316,7 @@
       <div><h1>{selected.title}</h1><p>{countTracks(selected.tracks?.length || 0)} · хранится в Lomify</p></div>
     </div>
   {:else}<h1>{offlineOnly ? 'Скачанное' : 'Любимые треки'}</h1>{/if}
+  {#if selected}<PlaylistSyncControl playlist={selected} />{/if}
   {#if selected && editing}
     <form class="mobile-playlist-editor" onsubmit={(event) => { event.preventDefault(); void saveEdit(); }}>
       <label for="mobile-playlist-edit-name">Название плейлиста</label>

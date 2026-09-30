@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { startPlaylistSync } from '$lib/playlistSync';
   import '../app.css';
   import '../mobile.css';
   import { isMobile } from '$lib/mobile';
@@ -162,6 +163,7 @@
       let disposed = false;
       const releases: (() => void)[] = [];
       const keep = (release: () => void) => disposed ? release() : releases.push(release);
+      keep(startPlaylistSync());
       void initDownloadedCoverCache().then(keep);
       void import('$lib/mobileDownloads').then(m => m.initMobileDownloads()).then(keep).catch(console.warn);
       return () => { disposed = true; releases.forEach(release => release()); };
