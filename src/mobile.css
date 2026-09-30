@@ -461,6 +461,8 @@ body[data-global-theme="true"] .mobile-app::before { opacity: 1; }
 .mobile-app .lyric-line { min-width: 0; max-width: 100%; overflow-wrap: anywhere; text-wrap: pretty; font-size: clamp(23px, 6.2vw, 30px); line-height: 1.4; }
 .mobile-app .lyric-line, .mobile-app .lyric-line[data-state] { transform: none; }
 .mobile-app .lyric-word { display: inline; white-space: normal; overflow-wrap: anywhere; }
+/* Inline character spans keep normal word wrapping and the same shaping as plain text. */
+.mobile-app .lyric-char { display: inline; transform: none; }
 .mobile-app .lyrics-letter-sync, .mobile-app .lyrics-line-sync, .mobile-app .lyrics-plain { min-width: 0; }
 .mobile-app .lyric-fill, .mobile-app .lyric-line-text { max-width: 100%; }
 .mobile-app .mobile-pane > .scrollbar-hide { padding: 20px 0; }

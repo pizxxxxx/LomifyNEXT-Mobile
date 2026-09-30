@@ -1,7 +1,7 @@
 # LomifyNEXT project map
 
 Last verified: 2026-09-30  
-Indexed desktop base: 9.3.2. Current mobile worktree: 1.0.14 beta (see the mobile section).
+Indexed desktop base: 9.3.2. Current mobile worktree: 1.0.15 beta (see the mobile section).
 
 This file is the navigation index for the repository. Read it before broad exploration.
 It explains where a change normally belongs; source code is still the final authority.
@@ -438,8 +438,8 @@ When changing the application version, verify all of these locations:
 2. `src-tauri/Cargo.toml` — Rust package version.
 3. `src-tauri/tauri.conf.json` — Tauri bundle version.
 4. `src/lib/version.ts` — UI-visible version and channel.
-5. `src/lib/changelog.ts` for in-app notices and `docs/releases/v1.0.14.md` for current GitHub release notes.
-   Current GitHub notes describe changes since the published 1.0.12 release.
+5. `src/lib/changelog.ts` for in-app notices and `docs/releases/v1.0.15.md` for current GitHub release notes.
+   Current GitHub notes describe changes since the published 1.0.14 release.
    The 1.0.12 GitHub notes aggregate changes since the last published version, 1.0.10;
    the intermediate local build 1.0.11 was not published.
 6. In the mobile worktree, `src-tauri/tauri.conf.json > bundle.android.versionCode`
@@ -554,6 +554,8 @@ owned by `src/lib/mobile.ts` (Android/iOS user agent; `?mobile` for development 
   The persistent line/letter
   selector lives in `MobileSettings.svelte > Текст песни`.
   `Lyrics.svelte > embedded` reuses the player background without a second video.
+  `src/mobile.css` keeps character spans inline: ordinary words wrap as a whole with
+  the same font shaping as line mode; only words wider than the line break inside.
   `MobileWave.svelte` opens this panel from the synchronized lyric snippet.
   `mobileTracks.ts > queueMobileTrackNext/mobileNextQueueIndex` own explicit successor
   priority before shuffle. Queue entries carry `mobileQueuedNext` without changing the
@@ -619,8 +621,8 @@ owned by `src/lib/mobile.ts` (Android/iOS user agent; `?mobile` for development 
 - `src-tauri/gen/android/.../MainActivity.kt` disables WebView pinch zoom and allows
   user-started delayed preview playback.
 - `src/lib/changelog.ts`: structured Android preview notes for this mobile worktree.
-  Android version is `1.0.14` in npm/Cargo/Tauri metadata and `src/lib/version.ts`.
-  `bundle.android.versionCode` is 9010005, above earlier Android test installs.
+  Android version is `1.0.15` in npm/Cargo/Tauri metadata and `src/lib/version.ts`.
+  `bundle.android.versionCode` is 9010006, above earlier Android test installs.
 - `src/lib/mobileUpdateCore.ts`: pure semantic-version comparison and strict GitHub
   ARM64 APK asset selection; the APK name, not its GitHub release tag, is authoritative.
   `src/lib/mobileUpdates.ts` checks the public GitHub releases API on Android launch/
@@ -663,7 +665,7 @@ owned by `src/lib/mobile.ts` (Android/iOS user agent; `?mobile` for development 
   `app/mod.rs` now keep desktop plugins, tray, FFmpeg and media controls off both
   mobile targets. iOS uses the mobile Symphonia decode path and persistent app-data
   downloads. `src-tauri/tauri.conf.json > bundle.iOS` sets iOS 15 minimum and build
-  number 10006. `src-tauri/icons/ios/` uses the current plum PC artwork. This is not
+  number 10007. `src-tauri/icons/ios/` uses the current plum PC artwork. This is not
   an iOS build or a verified sound path; the iOS audio session, background playback,
   lock-screen controls and WKWebView network behavior need Mac/iPhone testing.
 - `src-tauri/Info.ios.plist` allows only local networking for the app's 127.0.0.1
@@ -730,3 +732,7 @@ Bluetooth routing and real-device battery behavior still need device verificatio
 
 - `LomifyNEXT-1.0.14-arm64.apk`: playlist synchronization release; Android versionCode
   9010005, ARM64, minimum API 26, same signing key as 1.0.13 and 16 KiB page alignment.
+- `LomifyNEXT-1.0.15-arm64.apk`: lyrics word-wrapping fix; Android versionCode
+  9010006, ARM64, minimum API 26, same signing key as 1.0.14 and 16 KiB page alignment.
+  Browser QA uses synthetic timed lyrics at 320 and 375 pixel widths, normal/large
+  text and Inter, Comfortaa, Unbounded and Golos; no real-phone smoke test performed.
