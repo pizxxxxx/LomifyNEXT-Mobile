@@ -83,7 +83,7 @@ Svelte routes/components
 | `utils/` | Rust helper crates referenced from `src-tauri/Cargo.toml`. |
 | `static/` | Files copied into the frontend build as static assets. |
 | `permissions/` | Additional permission definitions kept at repository root. |
-| `README.md` | User-facing project overview and build instructions. |
+| `README.md` | User-facing mobile app description and feature overview. |
 | `CHANGELOG_9.3.0.md` | Release notes for the current repository version. |
 
 Generated, dependency, and local-only paths that should not be used for architecture
