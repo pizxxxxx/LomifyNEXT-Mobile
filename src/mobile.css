@@ -1,4 +1,10 @@
 /* Dedicated phone shell: no desktop window geometry or sidebar overrides. */
+.ios-swipe-player { translate: 0 var(--mobile-player-dismiss-y, 0px); transition: translate 180ms cubic-bezier(.22, 1, .36, 1); }
+.ios-swipe-player[data-swipe-dragging="true"] { transition: none; }
+.ios-swipe-player .mobile-now-header { touch-action: pan-x; }
+.ios-swipe-player .mobile-now-artwork, .ios-swipe-player .mobile-now-track-heading { touch-action: pan-x; }
+.mobile-app[data-motion="off"] .ios-swipe-player { transition: none; }
+.mobile-app [data-ios-glass-ready="true"] { opacity: 0 !important; pointer-events: none; }
 body[data-mobile="true"] {
   --mobile-bg: #101014;
   --mobile-surface: #1c1c23;
@@ -32,8 +38,8 @@ body[data-global-theme="true"] .mobile-app::before { opacity: 1; }
 .mobile-app button, .mobile-app input, .mobile-app select { font-family: inherit; }
 .mobile-app *, .mobile-app *::before, .mobile-app *::after { box-sizing: border-box; }
 .mobile-app button, .mobile-app input, .mobile-app select, .mobile-app summary { touch-action: manipulation; }
-.mobile-app button { transition: transform 160ms var(--ease-out), opacity 160ms var(--ease-out), background-color 160ms ease, color 160ms ease; }
-.mobile-app button:active:not(:disabled) { transform: scale(.97); opacity: .8; transition-duration: 0ms; }
+.mobile-app button { transition: transform 150ms cubic-bezier(0.2, 0, 0, 1), opacity 150ms ease, background-color 150ms ease, color 150ms ease; }
+.mobile-app button:active:not(:disabled) { transform: scale(.96); opacity: .8; transition-duration: 0ms; }
 .mobile-app button:disabled { opacity: .45; }
 .mobile-app :focus-visible { outline: 2px solid var(--mobile-accent); outline-offset: 3px; }
 .mobile-header { position: relative; z-index: 1; display: flex; align-items: center; gap: 10px; padding: max(env(safe-area-inset-top, 0px), 12px) 20px 12px; flex-shrink: 0; min-height: 64px; font-weight: 750; font-size: 20px; }
@@ -205,50 +211,48 @@ body[data-global-theme="true"] .mobile-app::before { opacity: 1; }
 .mobile-wave-shortcut strong { display: block; font-size: 21px; font-weight: 650; letter-spacing: -.025em; margin: 4px 0; }
 .mobile-wave-shortcut > span > span { display: block; font-size: 12px; color: var(--mobile-muted); }
 .mobile-wave-shortcut > svg { flex-shrink: 0; color: var(--mobile-accent); }
-.mobile-wave-pane { position: absolute; inset: 0; z-index: 2; background: #0d0b11; }
-.mobile-wave-page { width: 100%; max-width: 480px; margin: 0 auto; text-align: center; }
-.mobile-wave-intro { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 48px; margin: 0 0 12px; }
-.mobile-wave-kicker { display: inline-flex; align-items: center; gap: 7px; min-width: 0; color: var(--mobile-muted); font-size: 10px; font-weight: 700; letter-spacing: .09em; white-space: nowrap; }
-.mobile-wave-kicker svg { flex: none; }
-.mobile-wave-page h1 { margin: 0; flex: none; font-size: clamp(19px, 5vw, 25px); line-height: 1.15; letter-spacing: -.035em; white-space: nowrap; }
-.mobile-wave-hero { position: relative; isolation: isolate; min-height: clamp(280px, 38dvh, 360px); overflow: hidden; border: 1px solid rgb(255 255 255 / .1); border-radius: 24px; background: #170d19; box-shadow: 0 16px 38px rgb(0 0 0 / .23); }
-.mobile-wave-glow-field { position: absolute; inset: 0; overflow: hidden; pointer-events: none; }
-.mobile-wave-glow { position: absolute; display: block; width: 130%; height: 100%; border-radius: 50%; scale: 1; pointer-events: none; transition: scale 120ms linear, opacity 120ms linear; }
-.mobile-wave-glow.glow-warm { left: -36%; top: -13%; opacity: .72; background: radial-gradient(ellipse at 53% 48%, #ecc347 0%, #d88129 22%, rgb(197 65 68 / .76) 45%, transparent 70%); }
-.mobile-wave-glow.glow-deep { right: -39%; bottom: -21%; opacity: .58; background: radial-gradient(ellipse at 48% 50%, rgb(199 51 112 / .9) 0%, rgb(115 25 95 / .78) 35%, transparent 71%); }
-.mobile-wave-page.is-soundcloud .glow-warm { background: radial-gradient(ellipse at 53% 48%, #efaf57 0%, #d36735 27%, rgb(173 58 56 / .75) 47%, transparent 70%); }
-.mobile-wave-page.is-soundcloud .glow-deep { background: radial-gradient(ellipse at 48% 50%, rgb(143 54 106 / .85), rgb(86 35 98 / .65) 41%, transparent 71%); }
-.mobile-wave-glow-field.playing .mobile-wave-glow { will-change: transform, opacity, scale; }
-.mobile-wave-glow-field.playing .glow-warm { animation: mobile-wave-drift-warm 12s ease-in-out infinite alternate; }
-.mobile-wave-glow-field.playing .glow-deep { animation: mobile-wave-drift-deep 15s ease-in-out infinite alternate; }
-@keyframes mobile-wave-drift-warm { from { transform: translate3d(-6%, -3%, 0) rotate(-8deg); } to { transform: translate3d(7%, 6%, 0) rotate(8deg); } }
-@keyframes mobile-wave-drift-deep { from { transform: translate3d(6%, 3%, 0) rotate(7deg); } to { transform: translate3d(-7%, -6%, 0) rotate(-7deg); } }
-.mobile-wave-hero-content { position: relative; z-index: 1; display: flex; flex-direction: column; align-items: center; min-height: inherit; padding: 28px 22px 22px; background: linear-gradient(180deg, rgb(9 6 15 / .37), transparent 42%, rgb(9 6 15 / .5)); }
-.mobile-wave-now-label { color: rgb(255 255 255 / .82); font-size: 10px; font-weight: 750; letter-spacing: .16em; }
-.mobile-wave-track { display: grid; gap: 8px; width: 100%; min-width: 0; margin: 16px 0 22px; color: #fff; text-shadow: 0 2px 15px rgb(0 0 0 / .6); }
-.mobile-wave-track h2 { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; overflow: hidden; max-width: 100%; margin: 0; font-size: clamp(28px, 8vw, 42px); font-weight: 800; line-height: 1.08; letter-spacing: -.055em; overflow-wrap: anywhere; text-wrap: balance; }
-.mobile-wave-track p { margin: 0; color: rgb(255 255 255 / .88); font-size: 13px; font-weight: 600; line-height: 1.35; overflow-wrap: anywhere; }
-.mobile-wave-art { display: grid; place-items: center; width: 128px; height: 128px; margin: auto 0 0; }
-.mobile-wave-core { position: relative; display: grid; place-items: center; width: 100%; height: 100%; overflow: hidden; border: 1px solid rgb(255 255 255 / .28); border-radius: 17px; color: #fff; background: rgb(15 11 20 / .6); box-shadow: 0 14px 28px rgb(0 0 0 / .3); }
-.mobile-wave-core img { width: 100%; height: 100%; object-fit: cover; }
-.mobile-wave-play { width: 100%; min-height: 56px; margin-top: 14px; border-radius: 17px; background: #f5f2f4; color: #17131a; }
-.mobile-wave-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-top: 2px; }
-.mobile-wave-actions .mobile-text-button { color: var(--mobile-text); }
-.mobile-wave-status { color: var(--mobile-muted); font-size: 12px; line-height: 1.6; margin-top: 14px; }
-.mobile-wave-tuning { margin-top: 17px; border-top: 1px solid var(--mobile-border); text-align: left; }
-.mobile-wave-tuning summary { display: flex; align-items: center; gap: 12px; min-height: 70px; padding: 12px 3px; list-style: none; cursor: pointer; }
-.mobile-wave-tuning summary > span { flex: 1; min-width: 0; }
-.mobile-wave-tuning summary strong, .mobile-wave-tuning summary small { display: block; }
-.mobile-wave-tuning summary strong { font-size: 14px; }
-.mobile-wave-tuning summary small { font-size: 12px; color: var(--mobile-muted); line-height: 1.5; margin-top: 4px; }
-.mobile-wave-filter-content { padding: 0 3px 16px; }
+.mobile-pane.mobile-wave-pane { position: absolute; inset: 0; padding-top: max(16px, env(safe-area-inset-top)); background: var(--mobile-bg); }
+.mobile-wave-page { --wave-ink: #a090bd; width: 100%; max-width: 600px; margin: 0 auto; text-align: center; }
+.mobile-wave-toolbar { display: flex; align-items: center; gap: 12px; min-height: 44px; text-align: left; }
+.mobile-wave-toolbar > span { display: flex; align-items: center; gap: 8px; color: var(--mobile-muted); font-size: 14px; font-weight: 450; }
+.mobile-wave-toolbar .mobile-icon-button { margin-left: -8px; }
+.mobile-wave-stage { position: relative; display: grid; place-items: center; min-height: clamp(320px, 57dvh, 500px); margin-inline: -20px; isolation: isolate; }
+.mobile-wave-ribbons { position: absolute; inset: 0; pointer-events: none; overflow: hidden; }
+.mobile-wave-ribbon-layer { position: absolute; inset: 0; display: grid; place-items: center; opacity: .6; transform-origin: center; transition: scale 100ms cubic-bezier(.2, 0, 0, 1), rotate 120ms cubic-bezier(.2, 0, 0, 1), opacity 100ms linear; }
+.mobile-wave-ribbon-layer svg { width: 100%; height: 100%; stroke: var(--wave-ink); }
+.mobile-wave-ribbon-light { opacity: .45; }
+.mobile-wave-ribbon-light svg { stroke: #d5c9e8; }
+.mobile-wave-center { position: relative; z-index: 1; display: flex; flex-direction: column; align-items: center; gap: 14px; max-width: calc(100% - 40px); padding: 24px 0; }
+.mobile-wave-page .mobile-wave-title { margin: 0; font-size: clamp(29px, 8.6vw, 38px); font-weight: 600; line-height: 1.2; letter-spacing: -.035em; }
+.mobile-wave-start { display: flex; align-items: center; justify-content: center; gap: 12px; min-height: 56px; max-width: 100%; padding: 4px 6px; border-radius: 12px; color: var(--mobile-text); font-size: inherit; font-weight: inherit; line-height: inherit; }
+.mobile-wave-start > span:first-child { flex: none; transform: translateX(2px); }
+.mobile-wave-start > span:last-child { min-width: 0; overflow-wrap: anywhere; }
+.mobile-wave-tune-button { display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 44px; padding: 9px 14px; border-radius: 24px; background: var(--mobile-raised); color: var(--mobile-text); font-size: 14px; font-weight: 450; }
+.mobile-wave-tune-button .turned { rotate: 180deg; }
+.mobile-wave-status { color: var(--mobile-muted); font-size: 13px; line-height: 1.5; margin: 0; overflow-wrap: anywhere; }
+.mobile-wave-center .mobile-wave-status { max-width: 270px; position: absolute; top: calc(100% - 10px); }
+.mobile-wave-page > .mobile-error { margin: 0 0 20px; text-align: left; overflow-wrap: anywhere; }
+.mobile-wave-tuning { padding: 20px 0; border-top: 1px solid var(--mobile-border); text-align: left; }
 .mobile-wave-filter-content fieldset { border: 0; margin: 0 0 20px; padding: 0; }
-.mobile-wave-filter-content legend { font-size: 13px; color: var(--mobile-muted); padding: 8px 0 12px; }
+.mobile-wave-filter-content legend { font-size: 14px; font-weight: 500; color: var(--mobile-text); padding: 0 0 12px; }
 .mobile-wave-chips { display: flex; flex-wrap: wrap; gap: 8px; }
-.mobile-wave-chips button { min-height: 48px; padding: 10px 13px; border-radius: 12px; font-size: 13px; background: var(--mobile-bg); border: 1px solid var(--mobile-border); }
-.mobile-wave-chips button[aria-pressed="true"] { border-color: var(--mobile-accent); color: var(--mobile-accent); background: color-mix(in srgb, var(--mobile-accent) 10%, var(--mobile-bg)); }
+.mobile-wave-chips button { min-height: 44px; padding: 10px 13px; border-radius: 8px; font-size: 14px; background: var(--mobile-surface); border: 1px solid var(--mobile-border); }
+.mobile-wave-chips button[aria-pressed="true"] { border-color: var(--mobile-text); color: var(--mobile-text); background: var(--mobile-raised); }
 .mobile-wave-filter-content > button { width: 100%; }
-.mobile-wave-footer { color: var(--mobile-muted); font-size: 12px; line-height: 1.6; padding: 2px 8px 0; }
+.mobile-wave-listening { padding: 8px 0 0; }
+.mobile-wave-current { display: flex; align-items: center; gap: 12px; width: 100%; min-height: 72px; padding: 10px 0; text-align: left; }
+.mobile-wave-current-art { display: grid; place-items: center; flex: none; width: 48px; height: 48px; overflow: hidden; border-radius: 8px; background: var(--mobile-surface); color: var(--mobile-muted); }
+.mobile-wave-current-art img { width: 100%; height: 100%; object-fit: cover; }
+.mobile-wave-current-copy { flex: 1; min-width: 0; }
+.mobile-wave-current-copy strong { display: block; overflow-wrap: anywhere; font-size: 16px; font-weight: 500; line-height: 1.35; }
+.mobile-wave-current-copy small { display: block; margin-top: 4px; overflow-wrap: anywhere; font-size: 13px; color: var(--mobile-muted); }
+.mobile-wave-current > svg { flex: none; color: var(--mobile-muted); }
+.mobile-wave-refresh { margin: 8px auto 0; color: var(--mobile-muted); font-size: 13px; font-weight: 450; }
+.mobile-wave-page .mobile-wave-lyric { max-height: 100px; margin: 16px 0 0; padding: 8px 0; border: 0; border-radius: 8px; background: transparent; font-size: 20px; font-weight: 450; color: var(--mobile-muted); text-shadow: none; }
+.mobile-wave-footer { color: var(--mobile-muted); font-size: 13px; line-height: 1.5; padding: 0; margin: 0; }
+.mobile-app[data-motion="off"] .mobile-wave-ribbon-layer { transition: none; }
+@media (prefers-reduced-motion: reduce) { .mobile-wave-ribbon-layer { transition: none; } }
+@media (orientation: landscape) and (max-height: 500px) { .mobile-wave-stage { min-height: 240px; } }
 .mobile-update-card { display: grid; gap: 10px; padding: 16px; }
 .mobile-update-current { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; font-size: 13px; color: var(--mobile-muted); }
 .mobile-update-current strong { color: var(--mobile-text); font-size: 14px; white-space: nowrap; }
@@ -261,7 +265,7 @@ body[data-global-theme="true"] .mobile-app::before { opacity: 1; }
 .mobile-about summary small { color: var(--mobile-muted); font-size: 12px; font-weight: 500; }
 .mobile-error { color: #ffb4ab; font-size: 14px; margin: 12px 0; }
 .mobile-version { display: flex; align-items: center; justify-content: center; gap: 6px; color: var(--mobile-muted); text-align: center; font-size: 12px; line-height: 1.8; margin-top: 28px; }
-.mobile-track-row { display: flex; align-items: center; gap: 6px; height: 88px; }
+.mobile-track-row { display: flex; align-items: center; gap: 6px; height: var(--mobile-track-row-height, 72px); }
 .mobile-mini-info { flex: 1; min-width: 0; display: flex; align-items: center; gap: 12px; text-align: left; padding: 0 8px; }
 .mobile-mini-play { display: grid; place-items: center; flex: 0 0 44px; min-width: 44px; min-height: 44px; padding: 0; }
 .mobile-mini-copy { display: grid; align-content: center; flex: 1; min-width: 0; height: 88px; }
@@ -271,6 +275,12 @@ body[data-global-theme="true"] .mobile-app::before { opacity: 1; }
 .mobile-mini-copy small { color: var(--mobile-muted); font-size: 12px; }
 .mobile-mini-artist { display: flex; align-items: center; min-width: 0; height: 44px; color: var(--mobile-muted); font-size: 12px; }
 .mobile-mini-artist .artist-link { display: block; align-content: start; min-height: 44px; padding-top: 3px; line-height: 1.35; }
+.mobile-track-row .mobile-mini-info { height: 100%; }
+.mobile-track-row .mobile-mini-copy { height: 100%; min-height: 0; display: flex; flex-direction: column; justify-content: center; }
+.mobile-track-row .mobile-mini-title { min-height: 0; padding: 0; align-items: center; }
+.mobile-track-row .mobile-mini-artist { height: auto; min-height: 24px; }
+.mobile-track-row .artist-tag { display: inline-flex; align-items: center; min-width: 0; max-width: 100%; flex-wrap: nowrap; overflow: hidden; }
+.mobile-track-row .artist-link { min-width: 0; min-height: 24px; padding-top: 0; align-content: center; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .mobile-mini-art { width: 44px; height: 44px; flex-shrink: 0; border-radius: 10px; overflow: hidden; display: grid; place-items: center; background: var(--mobile-bg); }
 .mobile-mini-art img { width: 100%; height: 100%; object-fit: cover; }
 .mobile-album-art, .mobile-mini-art, .mobile-playlist-card > span, .mobile-menu-art, .mobile-now-art { position: relative; color: var(--mobile-muted); }
@@ -285,7 +295,8 @@ body[data-global-theme="true"] .mobile-app::before { opacity: 1; }
 .mobile-player-copy strong { color: var(--mobile-text); font-size: 13px; line-height: 1.25; font-weight: 700; }
 .mobile-player-copy small { margin-top: 3px; color: var(--mobile-muted); font-size: 11px; line-height: 1.25; }
 .mobile-mini-progress { position: absolute; bottom: 0; left: 0; height: 2px; background: var(--mobile-accent); }
-.mobile-player.expanded { inset: 0; display: grid; grid-template-rows: auto minmax(160px, 1fr) auto; align-items: stretch; border: 0; border-radius: 0; padding: max(env(safe-area-inset-top),16px) 20px calc(var(--mobile-bottom) + 8px); overflow-x: hidden; overflow-y: auto; background: var(--mobile-bg); color: #fff; z-index: 90; }
+.mobile-player.expanded { inset: 0; width: 100%; min-width: 0; max-width: 100%; display: grid; grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(160px, 1fr) auto; align-items: stretch; border: 0; border-radius: 0; padding: max(env(safe-area-inset-top),16px) 20px calc(var(--mobile-bottom) + 8px); overflow-x: hidden; overflow-y: auto; background: var(--mobile-bg); color: #fff; z-index: 90; }
+.mobile-player.expanded > .mobile-now-header, .mobile-player.expanded > .mobile-now-middle, .mobile-player.expanded > .mobile-now-bottom { min-width: 0; max-width: min(100%, 640px); }
 .mobile-player.mobile-now-panel { isolation: isolate; }
 .mobile-now-art, .mobile-now-shade { position: absolute; inset: 0; pointer-events: none; }
 .mobile-now-art { z-index: -2; background: radial-gradient(circle at 50% 24%, color-mix(in srgb, var(--mobile-accent) 25%, #1c1c23), #0b0b0e 75%); overflow: hidden; }
@@ -322,7 +333,7 @@ body[data-global-theme="true"] .mobile-app::before { opacity: 1; }
 .mobile-now-title .artist-tag { flex-wrap: wrap; width: auto; }
 .mobile-now-title .artist-link { display: inline-flex; align-items: center; min-height: 44px; padding: 0 3px; }
 .mobile-seek { display: flex; align-items: center; min-height: 48px; margin-top: 16px; }
-.mobile-seek input { width: 100%; height: 48px; margin: 0; appearance: none; background: transparent; cursor: pointer; }
+.mobile-seek input { width: 100%; min-width: 0; height: 48px; margin: 0; appearance: none; background: transparent; cursor: pointer; }
 .mobile-seek input::-webkit-slider-runnable-track { height: 4px; border-radius: 4px; background: linear-gradient(to right, #fff var(--seek-progress), rgb(255 255 255 / .37) var(--seek-progress)); }
 .mobile-seek input::-webkit-slider-thumb { appearance: none; width: 4px; height: 32px; margin-top: -14px; border-radius: 4px; background: #fff; box-shadow: 0 0 0 2px rgb(0 0 0 / .14); }
 .mobile-seek input:disabled { opacity: .6; }
@@ -337,7 +348,7 @@ body[data-global-theme="true"] .mobile-app::before { opacity: 1; }
 .mobile-now-extra-group .mobile-icon-button { min-width: 48px; min-height: 48px; }
 .mobile-now-text-button { min-height: 56px; min-width: 120px; padding: 0 16px; border: 1px solid rgb(255 255 255 / .19); border-radius: 22px; background: rgb(16 16 20 / .43); color: #fff; white-space: nowrap; font-size: 13px; font-weight: 650; }
 .mobile-now-eq-button { display: inline-flex; align-items: center; justify-content: center; gap: 9px; width: 100%; min-height: 48px; margin-top: 4px; border-radius: 16px; color: rgb(255 255 255 / .75); font-size: 13px; font-weight: 550; }
-.mobile-player-status { color: #fff; font-size: 12px; line-height: 1.4; text-align: center; margin: -6px 4px 12px; }
+.mobile-player-status { min-width: 0; max-width: 100%; max-height: clamp(48px, 18dvh, 144px); overflow-y: auto; overscroll-behavior-y: contain; white-space: normal; overflow-wrap: anywhere; color: #fff; font-size: 12px; line-height: 1.4; text-align: center; margin: -6px 4px 12px; padding-block: 2px; }
 .mobile-player-status.mobile-error { color: #ffb4ab; }
 /* Reused search/artist/lyrics views: constrain their desktop presentation. */
 .mobile-app .search-page-head { flex-wrap: wrap; gap: 16px; }
@@ -448,6 +459,12 @@ body[data-global-theme="true"] .mobile-app::before { opacity: 1; }
 .mobile-track-menu-content { position: relative; padding: 20px 16px max(env(safe-area-inset-bottom),24px); }
 .mobile-menu-heading { display: grid; grid-template-columns: 64px minmax(0,1fr) 48px; align-items: center; gap: 12px; margin-bottom: 16px; }
 .mobile-menu-heading > div { min-width: 0; }
+.mobile-track-info-title { display: flex; align-items: center; gap: 8px; margin: 8px 0; }
+.mobile-track-info-title h3 { margin: 0; font-size: 20px; font-weight: 650; }
+.mobile-track-info { margin: 0 0 20px; }
+.mobile-track-info > div { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.35fr); gap: 20px; padding: 14px 4px; border-bottom: 1px solid var(--mobile-border); }
+.mobile-track-info dt { color: var(--mobile-muted); font-size: 13px; }
+.mobile-track-info dd { margin: 0; font-size: 14px; text-align: right; overflow-wrap: anywhere; }
 .mobile-menu-close { color: var(--mobile-muted); }
 .mobile-menu-art { display: grid; place-items: center; width: 64px; aspect-ratio: 1; border-radius: 14px; overflow: hidden; color: var(--mobile-muted); background: var(--mobile-raised); }
 .mobile-menu-art img { width: 100%; height: 100%; object-fit: cover; }
@@ -544,7 +561,7 @@ body[data-global-theme="true"] .mobile-app::before { opacity: 1; }
 .mobile-artist-album-head p { margin: 4px 0 8px; color: var(--mobile-muted); font-size: 12px; }
 .mobile-artist-album-head .mobile-secondary { min-height: 44px; padding: 8px 12px; }
 .mobile-app[data-text-size="large"] .lyric-line { font-size: clamp(26px, 7vw, 38px); }
-.mobile-app[data-text-size="large"] .mobile-mini-info strong, .mobile-app[data-text-size="large"] .mobile-album strong { font-size: 16px; }
+.mobile-app[data-text-size="large"] .mobile-mini-info strong, .mobile-app[data-text-size="large"] .mobile-mini-title, .mobile-app[data-text-size="large"] .mobile-album strong { font-size: 16px; }
 .mobile-app[data-text-size="large"] .mobile-preference-row strong { font-size: 16px; }
 .mobile-app .mobile-preference-row input[type="range"] { width: min(125px, 34vw); accent-color: var(--mobile-accent); }
 .mobile-select-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 66px; border-top: 1px solid var(--mobile-border); font-size: 14px; }
@@ -582,12 +599,12 @@ body[data-global-theme="true"] .mobile-app::before { opacity: 1; }
 
 /* Artwork-led mobile screens with floating, shared controls. */
 body[data-mobile="true"] { --mobile-bg: #0b0b0e; --mobile-surface: #19191e; --mobile-raised: #2a2a30; --mobile-border: rgb(255 255 255 / .12); --mobile-glass: color-mix(in srgb, var(--mobile-raised) 86%, transparent); }
-.mobile-app h1 { font-size: 34px; font-weight: 780; line-height: 1.12; letter-spacing: -.035em; }
-.mobile-app h2 { font-size: 23px; font-weight: 720; letter-spacing: -.022em; }
+.mobile-app h1 { font-size: 30px; font-weight: 650; line-height: 1.15; letter-spacing: -.025em; }
+.mobile-app h2 { font-size: 20px; font-weight: 600; letter-spacing: -.015em; }
 .mobile-header { min-height: 60px; font-size: 17px; }
 .mobile-edition { font-size: 9px; opacity: .75; }
-.mobile-app:is([data-view="artist"], [data-view="library"], [data-view="search"], [data-view="settings"]) > .mobile-header { display: none; }
-.mobile-app:is([data-view="library"], [data-view="search"], [data-view="settings"]) .mobile-pane { padding-top: max(24px, env(safe-area-inset-top)); }
+.mobile-navigation-surface:is([data-view="artist"], [data-view="library"], [data-view="search"], [data-view="settings"], [data-view="wave"]) > .mobile-header { display: none; }
+.mobile-navigation-surface:is([data-view="library"], [data-view="search"], [data-view="settings"]) .mobile-pane { padding-top: max(24px, env(safe-area-inset-top)); }
 .mobile-pane { padding-bottom: calc(100px + var(--mobile-bottom)); }
 .mobile-content.has-track .mobile-pane { padding-bottom: calc(176px + var(--mobile-bottom)); }
 .mobile-nav { position: fixed; inset: auto 16px var(--mobile-bottom); min-height: 68px; padding: 5px; border: 1px solid rgb(255 255 255 / .17); border-radius: 38px; background: var(--mobile-raised); box-shadow: inset 0 1px 0 rgb(255 255 255 / .08), 0 10px 28px rgb(0 0 0 / .32); }
@@ -603,7 +620,7 @@ body[data-mobile="true"] { --mobile-bg: #0b0b0e; --mobile-surface: #19191e; --mo
 .mobile-player-copy small { font-size: 12px; }
 .mobile-mini-progress { height: 2px; opacity: .7; }
 
-.mobile-library-page-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 2px 0 20px; }
+.mobile-library-page-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 2px 0 16px; }
 .mobile-library-page-heading h1 { margin: 0; min-width: 0; text-align: left; text-wrap: pretty; }
 .mobile-library-heading-tools { display: flex; flex: none; gap: 8px; }
 .mobile-library-heading-tools .mobile-icon-button { min-width: 44px; min-height: 44px; }
@@ -611,8 +628,9 @@ body[data-mobile="true"] { --mobile-bg: #0b0b0e; --mobile-surface: #19191e; --mo
 .mobile-library-shelf .mobile-playlist-card { flex: 0 0 132px; min-width: 0; scroll-snap-align: start; }
 .mobile-library-shelf .mobile-playlist-card > span { border-radius: 12px; }
 .mobile-playlist-card strong { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; font-size: 14px; line-height: 1.3; white-space: normal; }
-.mobile-library-shelf .mobile-liked-card > span { background: #ededf0; color: var(--mobile-accent); }
-.mobile-library-collections { gap: 0; margin: 0 0 32px; }
+.mobile-library-shelf .mobile-liked-card > span { background: linear-gradient(145deg, color-mix(in srgb, var(--color-primary, #ff884d) 75%, #36101b), color-mix(in srgb, var(--color-primary, #ff884d) 34%, #21121b)); color: #fff; }
+.mobile-liked-card > span svg { filter: drop-shadow(0 2px 8px rgb(255 255 255 / .18)); }
+.mobile-library-collections { gap: 0; margin: 0 0 20px; }
 .mobile-library-collection { grid-template-columns: 30px minmax(0,1fr) auto 18px; min-height: 66px; gap: 12px; padding: 10px 0; border: 0; border-radius: 0; background: transparent; box-shadow: none; position: relative; }
 .mobile-library-collection::after { content: ''; position: absolute; bottom: 0; left: 42px; right: 0; height: 1px; background: var(--mobile-border); }
 .mobile-library-collection > svg:first-child { color: var(--mobile-accent); }
@@ -674,7 +692,7 @@ body[data-mobile="true"] { --mobile-bg: #0b0b0e; --mobile-surface: #19191e; --mo
 .mobile-artist-about { padding: 18px; border: 1px solid var(--mobile-border); border-radius: 20px; background: var(--mobile-surface); }
 .mobile-artist-about p { margin: 12px 0 0; font-size: 14px; line-height: 1.6; white-space: pre-line; color: var(--mobile-muted); }
 
-.mobile-player.expanded { padding: max(env(safe-area-inset-top), 8px) 24px calc(var(--mobile-bottom) + 8px); grid-template-rows: auto minmax(180px, 1fr) auto; }
+.mobile-player.expanded { padding: max(env(safe-area-inset-top), 8px) 24px calc(var(--mobile-bottom) + 8px); grid-template-rows: auto minmax(0, 1fr) auto; }
 .mobile-now-header { display: block; width: 100%; max-width: 640px; margin: 0 auto; }
 .mobile-now-dismiss { display: grid; place-items: center; width: 100%; min-height: 32px; background: transparent; }
 .mobile-now-dismiss > span { width: 52px; height: 5px; border-radius: 5px; background: rgb(255 255 255 / .38); }
@@ -710,3 +728,225 @@ body[data-mobile="true"] { --mobile-bg: #0b0b0e; --mobile-surface: #19191e; --mo
 @media (min-width: 600px) { .mobile-library-shelf { margin-inline: 0; padding-inline: 0; } .mobile-nav, .mobile-player:not(.expanded) { left: max(16px, calc((100vw - 720px)/2)); right: max(16px, calc((100vw - 720px)/2)); } .mobile-recent-grid { grid-template-columns: repeat(3, minmax(0,1fr)); } }
 @media (orientation: landscape) and (max-height: 540px) { .mobile-artist-hero { height: 330px; min-height: 330px; } .mobile-player.expanded { grid-template-columns: minmax(0,1fr) minmax(0,1fr); grid-template-rows: auto minmax(0,1fr); padding: max(env(safe-area-inset-top), 4px) 24px max(env(safe-area-inset-bottom), 8px); gap: 4px 20px; } .mobile-now-dismiss { min-height: 24px; } .mobile-now-track-heading { min-height: 66px; grid-template-columns: 48px minmax(0,1fr) 44px 44px; } .mobile-now-cover { width: 48px; height: 48px; } .mobile-now-header { grid-column: 1 / -1; } .mobile-now-lyrics { margin: 0; min-height: 150px; } .mobile-now-bottom { overflow-y: auto; } .mobile-now-controls { min-height: 64px; margin: 4px 0; } .mobile-play-large { width: 60px; height: 60px; flex-basis: 60px; } .mobile-now-queue { margin-top: 0; } }
 @media (prefers-reduced-transparency: reduce), (prefers-contrast: more) { .mobile-app .mobile-nav, .mobile-app .mobile-player:not(.expanded), .mobile-app .mobile-glass-button { background: var(--mobile-raised); -webkit-backdrop-filter: none; backdrop-filter: none; } }
+
+/* Settings are a menu of destinations; each detail screen owns its controls. */
+.mobile-settings { min-width: 0; padding-bottom: 8px; }
+.mobile-settings-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 24px; }
+.mobile-settings .mobile-settings-heading h1 { margin: 0; min-width: 0; font-size: 30px; font-weight: 650; letter-spacing: -.025em; line-height: 1.15; text-wrap: balance; overflow-wrap: anywhere; }
+.mobile-settings-build { flex: none; font-size: 13px; font-weight: 400; color: var(--mobile-muted); font-variant-numeric: tabular-nums; }
+.mobile-settings-back { display: inline-flex; align-items: center; gap: 6px; min-height: 44px; margin: -8px 0 12px -4px; padding: 0 4px; color: var(--mobile-accent); font-size: 15px; font-weight: 450; }
+.mobile-settings .mobile-account-group { margin: 0 0 28px; }
+.mobile-settings .mobile-profile-card { padding: 0; gap: 14px; border: 0; border-radius: 0; background: transparent; box-shadow: none; }
+.mobile-settings .mobile-profile-avatar { width: 52px; height: 52px; border-radius: 50%; background: var(--mobile-raised); color: var(--mobile-text); font-size: 22px; font-weight: 500; }
+.mobile-settings .mobile-profile-avatar img { outline: 1px solid rgb(255 255 255 / .1); outline-offset: -1px; border-radius: inherit; }
+.mobile-settings .mobile-profile-card strong { font-size: 17px; font-weight: 550; overflow: visible; white-space: normal; overflow-wrap: anywhere; }
+.mobile-settings .mobile-profile-card small { margin-top: 3px; font-size: 13px; line-height: 1.4; }
+.mobile-settings .mobile-profile-card .mobile-icon-button { color: var(--mobile-muted); background: transparent; box-shadow: none; border: 0; }
+.mobile-settings-menu-group + .mobile-settings-menu-group { margin-top: 24px; }
+.mobile-settings-menu-group h2 { margin: 0 0 8px 14px; color: var(--mobile-muted); font-size: 13px; font-weight: 450; line-height: 1.4; }
+.mobile-settings-menu { overflow: clip; background: var(--mobile-surface); border-radius: 12px; }
+.mobile-settings-menu-row { position: relative; display: flex; align-items: center; gap: 12px; width: 100%; min-height: 56px; padding: 14px; color: var(--mobile-text); text-align: start; font-size: 16px; font-weight: 450; line-height: 1.4; }
+.mobile-settings-menu-row + .mobile-settings-menu-row::before { content: ''; position: absolute; top: 0; inset-inline: 47px 14px; height: 1px; background: color-mix(in srgb, var(--mobile-border) 60%, transparent); }
+.mobile-settings-menu-row > svg { flex: none; color: var(--mobile-muted); }
+.mobile-settings-menu-label { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.mobile-settings-menu-value { max-width: 36%; flex-shrink: 1; font-size: 13px; color: var(--mobile-muted); text-align: end; overflow-wrap: anywhere; }
+.mobile-settings-menu-row > svg:last-child { width: 16px; margin-inline-start: -4px; }
+.mobile-settings .mobile-settings-menu-row:active:not(:disabled) { transform: none; opacity: 1; background: var(--mobile-raised); }
+.mobile-settings .mobile-settings-menu-row:focus-visible { outline-offset: -3px; }
+.mobile-settings .mobile-preference-card { padding: 0 16px; border: 0; border-radius: 12px; box-shadow: none; background: var(--mobile-surface); }
+.mobile-settings-detail[hidden] { display: none; }
+.mobile-settings .mobile-preference-row { min-height: 64px; gap: 14px; padding: 12px 0; border-color: color-mix(in srgb, var(--mobile-border) 60%, transparent); }
+.mobile-settings .mobile-preference-row:first-child { border-top: 0; }
+.mobile-settings .mobile-preference-row strong { font-size: 16px; font-weight: 450; line-height: 1.4; overflow-wrap: anywhere; }
+.mobile-settings .mobile-preference-row small { margin-top: 3px; font-size: 13px; line-height: 1.45; text-wrap: pretty; }
+.mobile-settings .mobile-toggle { width: 48px; min-height: 44px; }
+.mobile-settings .mobile-toggle::after { background: #fff; }
+.mobile-settings .mobile-select-row { gap: 12px; min-height: 64px; font-size: 16px; font-weight: 450; }
+.mobile-settings .mobile-select-row select { min-width: 0; max-width: 58%; padding: 8px; border: 0; border-radius: 8px; background: var(--mobile-raised); font-size: 16px; font-weight: 400; }
+.mobile-settings .mobile-preference-label { padding-top: 16px; font-size: 16px; font-weight: 450; }
+.mobile-settings .mobile-preference-label small { font-size: 13px; }
+.mobile-settings .mobile-accent-options { grid-template-columns: repeat(auto-fit, minmax(54px, 1fr)); gap: 8px 4px; margin: 8px -6px 16px; }
+.mobile-settings .mobile-accent-option { min-height: 64px; gap: 7px; }
+.mobile-settings .mobile-accent-option small { font-size: 12px; line-height: 1.3; }
+.mobile-settings .mobile-accent-option > span { color: #fff; box-shadow: inset 0 0 0 1px rgb(255 255 255 / .16); }
+.mobile-settings .mobile-accent-option > span > svg { color: currentColor; }
+.mobile-settings .mobile-source-options { gap: 4px; padding: 4px 0 16px; }
+.mobile-settings .mobile-source-options button { min-width: 0; min-height: 44px; padding: 8px 6px; border: 0; border-radius: 8px; background: var(--mobile-bg); font-size: 14px; font-weight: 450; }
+.mobile-settings .mobile-source-options button[aria-pressed="true"] { background: var(--mobile-raised); font-weight: 550; }
+.mobile-settings .mobile-source-options button[aria-pressed="true"]::after { content: '✓'; font-size: 14px; }
+.mobile-settings .mobile-source-options svg { flex: none; }
+.mobile-settings .mobile-source-options svg.lucide-check { display: none; }
+.mobile-settings .mobile-settings-fold-content { padding: 0; border: 0; }
+.mobile-settings .mobile-service-card { margin-top: 16px; border: 0; border-radius: 12px; background: var(--mobile-surface); box-shadow: none; }
+.mobile-settings .mobile-service-summary { min-height: 68px; padding: 12px 16px; }
+.mobile-settings .mobile-service-summary strong { font-size: 16px; font-weight: 500; }
+.mobile-settings .mobile-service-summary small { font-size: 13px; }
+.mobile-settings .mobile-service-mark { width: 32px; height: 32px; border-radius: 0; background: transparent; box-shadow: none; }
+.mobile-settings .mobile-service-content { padding: 0 16px 16px; }
+.mobile-settings .mobile-service-content .playlist-sync-settings { margin: 16px 0; padding: 16px 0 0; border: 0; border-top: 1px solid var(--mobile-border); border-radius: 0; background: transparent; }
+.mobile-settings .mobile-service-content .playlist-sync-settings strong { font-size: 16px; font-weight: 450; }
+.mobile-settings .mobile-service-content .playlist-sync-settings small,
+.mobile-settings .mobile-service-content .playlist-sync-settings p,
+.mobile-settings .mobile-service-content .playlist-sync-settings > span { color: var(--mobile-muted); }
+.mobile-settings .mobile-service-card[open] .mobile-service-content { animation: none; }
+.mobile-settings .mobile-guide-pill { background: transparent; padding: 0; border: 0; border-radius: 0; }
+.mobile-settings .mobile-connection-steps > li > span { color: var(--mobile-muted); background: var(--mobile-raised); border-radius: 50%; }
+.mobile-settings .mobile-security-note { border: 0; border-radius: 0; background: transparent; padding-inline: 0; }
+.mobile-settings .mobile-connection-form input, .mobile-settings .mobile-create-playlist input { min-width: 0; font-size: 16px; border-radius: 8px; }
+.mobile-settings .mobile-primary, .mobile-settings .mobile-secondary { max-width: 100%; min-height: 44px; padding: 10px 14px; border-radius: 8px; font-size: 14px; font-weight: 550; line-height: 1.4; }
+.mobile-settings .mobile-primary > svg, .mobile-settings .mobile-secondary > svg { flex: none; }
+.mobile-settings .mobile-update-current { padding: 16px 0; font-size: 16px; font-variant-numeric: tabular-nums; }
+.mobile-settings .mobile-update-current strong { font-weight: 550; }
+.mobile-settings .mobile-hint { padding-block: 12px; margin: 0; font-size: 13px; line-height: 1.5; overflow-wrap: anywhere; text-wrap: pretty; }
+.mobile-settings .mobile-update-card > .mobile-primary, .mobile-settings .mobile-update-card > .mobile-secondary { margin-block: 8px; }
+.mobile-settings .mobile-update-card > .mobile-text-button { justify-content: flex-start; min-height: 48px; font-size: 14px; }
+.mobile-settings .mobile-font-preview { margin: 16px 0 0; padding: 18px 0; border-top: 1px solid var(--mobile-border); color: var(--mobile-muted); font-weight: inherit; text-align: start; }
+.mobile-settings .mobile-settings-about { display: flex; flex-direction: column; align-items: center; gap: 8px; margin: 12px 0 28px; }
+.mobile-settings-about img { border-radius: 14px; outline: 1px solid rgb(255 255 255 / .1); outline-offset: -1px; }
+.mobile-settings-about strong { margin-top: 4px; font-size: 20px; font-weight: 550; }
+.mobile-settings-about span { color: var(--mobile-muted); font-size: 13px; }
+.mobile-settings .mobile-version { margin-top: 24px; font-size: 12px; font-weight: 400; }
+.mobile-app[data-text-size="large"] .mobile-settings .mobile-settings-menu-label,
+.mobile-app[data-text-size="large"] .mobile-settings .mobile-preference-row strong,
+.mobile-app[data-text-size="large"] .mobile-settings .mobile-select-row,
+.mobile-app[data-text-size="large"] .mobile-settings .mobile-select-row select { font-size: 18px; }
+.mobile-app[data-text-weight="bold"] .mobile-settings .mobile-settings-menu-label,
+.mobile-app[data-text-weight="bold"] .mobile-settings .mobile-preference-row strong { font-weight: 600; }
+@media (max-width: 370px) {
+  .mobile-settings-menu-row { gap: 10px; padding-inline: 12px; font-size: 15px; }
+  .mobile-settings-menu-value { max-width: 30%; font-size: 12px; }
+  .mobile-settings .mobile-settings-fold-content > .mobile-preference-card .mobile-source-options { grid-template-columns: minmax(0, 1fr); }
+  .mobile-settings .mobile-preference-row:has(input[type="range"]) { flex-wrap: wrap; }
+  .mobile-settings .mobile-preference-row input[type="range"] { width: 100%; min-height: 44px; }
+}
+@media (prefers-reduced-motion: reduce) { .mobile-settings button, .mobile-settings .mobile-toggle::before, .mobile-settings .mobile-toggle::after { transition: none; } }
+.mobile-app[data-motion="off"] .mobile-settings button, .mobile-app[data-motion="off"] .mobile-settings .mobile-toggle::before, .mobile-app[data-motion="off"] .mobile-settings .mobile-toggle::after { transition: none; }
+
+/* Shared phone navigation and type rhythm, including nested destinations. */
+.mobile-navigation-stage { position: relative; flex: 1; min-width: 0; min-height: 0; overflow: hidden; background: var(--mobile-bg); }
+.mobile-navigation-surface { position: absolute; inset: 0; display: flex; flex-direction: column; min-width: 0; min-height: 0; background: var(--mobile-bg); }
+.mobile-navigation-surface > .mobile-content { height: auto; }
+.mobile-back-edge { position: absolute; inset: 0 auto 0 0; width: 20px; pointer-events: none; z-index: 4; }
+.mobile-back-preview { position: absolute; inset: 0; overflow: hidden; pointer-events: none; background: var(--mobile-bg); transform: translateX(calc(-22% * (1 - var(--mobile-back-progress, 0)))); }
+.mobile-back-preview > .mobile-navigation-surface { position: absolute; inset: 0; }
+.mobile-back-preview::after { content: ''; position: absolute; inset: 0; background: #000; opacity: calc(.24 * (1 - var(--mobile-back-progress, 0))); }
+.mobile-back-preview *, .mobile-back-preview *::before, .mobile-back-preview *::after { animation: none !important; transition: none !important; }
+.mobile-navigation-stage[data-edge-back] > .mobile-navigation-surface { transform: translateX(var(--mobile-back-x, 0px)); box-shadow: -8px 0 24px rgb(0 0 0 / .24); pointer-events: none; }
+.mobile-navigation-stage[data-edge-back="settling"] > .mobile-navigation-surface, .mobile-navigation-stage[data-edge-back="settling"] > .mobile-back-preview, .mobile-navigation-stage[data-edge-back="settling"] > .mobile-back-preview::after { transition: transform 220ms cubic-bezier(0.2, 0, 0, 1), opacity 220ms ease; }
+.mobile-navigation-stage[data-back-reduced="true"] > .mobile-navigation-surface { transform: none; box-shadow: none; }
+.mobile-navigation-stage[data-back-reduced="true"] > .mobile-back-preview { visibility: hidden; }
+.mobile-navigation-stage[data-back-reduced="true"] .mobile-back-edge::after { content: '‹'; display: grid; place-items: center; position: absolute; top: 45%; left: 0; width: 28px; height: 44px; border-radius: 0 12px 12px 0; background: var(--mobile-raised); color: var(--mobile-text); font-size: 28px; }
+.mobile-now-panel[data-edge-back] { translate: var(--mobile-back-x, 0px) 0; transition: none; }
+.mobile-now-panel[data-edge-back="settling"] { transition: translate 220ms cubic-bezier(0.2, 0, 0, 1); }
+.mobile-app .lucide { stroke-width: 1.5; }
+.mobile-app .mobile-primary .lucide { stroke-width: 2; }
+.mobile-app .mobile-header { font-weight: 600; }
+.mobile-home .mobile-search-shortcut { min-height: 52px; padding: 12px 14px; border-radius: 12px; font-size: 15px; box-shadow: none; }
+.mobile-home .mobile-wave-shortcut { border-radius: 16px; box-shadow: none; }
+.mobile-home .mobile-wave-shortcut small { font-size: 13px; font-weight: 400; letter-spacing: 0; text-transform: none; }
+.mobile-home .mobile-wave-shortcut strong { font-size: 25px; font-weight: 600; letter-spacing: -.02em; }
+.mobile-home .mobile-favorites { padding: 10px 0; border: 0; border-radius: 0; background: transparent; }
+.mobile-home .mobile-favorites strong { font-size: 16px; font-weight: 500; }
+.mobile-home .mobile-favorites-icon { color: #fff; background: var(--mobile-raised); border-radius: 12px; }
+.mobile-home .mobile-favorites-icon svg { fill: currentColor; }
+.mobile-home .mobile-album-art { border-radius: 12px; }
+.mobile-home .mobile-album strong { font-size: 15px; font-weight: 550; }
+.mobile-home .mobile-album-artist, .mobile-home .mobile-section-heading h2 small { font-size: 13px; }
+.mobile-app img:not(.mobile-artist-portrait) { outline: 1px solid rgb(255 255 255 / .1); outline-offset: -1px; }
+.mobile-app .search-page-title > span, .mobile-app .search-page-title > p, .mobile-app .search-section-heading > div > span { display: none; }
+.mobile-app .search-page-title h1 { font-size: 30px; font-weight: 650; }
+.mobile-app .search-command { border-radius: 12px; box-shadow: none; }
+.mobile-app .search-source-control { box-shadow: none; border-radius: 12px; }
+.mobile-app .search-source-control .seg-pill { border-radius: 8px; }
+.mobile-app .search-top-result { border-radius: 12px; box-shadow: none; animation: none; }
+.mobile-app .search-top-art { border-radius: 8px; }
+.mobile-app .search-top-play:active { transform: scale(.96); }
+.mobile-app .search-section-heading h2 { font-size: 20px; font-weight: 600; }
+.mobile-app .search-top-copy .search-result-kicker { color: var(--mobile-muted); font-size: 13px; letter-spacing: 0; text-transform: none; }
+.mobile-library-collection > svg:first-child { color: var(--mobile-muted); }
+.mobile-saved-artist { grid-template-columns: 48px minmax(0,1fr) 20px; min-height: 72px; gap: 14px; }
+.mobile-saved-artist > span { width: 48px; height: 48px; }
+.mobile-saved-artist strong { font-size: 16px; font-weight: 500; }
+.mobile-artist-page { gap: 8px; }
+.mobile-app .mobile-artist-identity h1 { font-weight: 650; letter-spacing: -.025em; }
+.mobile-artist-hero-actions { gap: 20px; }
+.mobile-artist-hero-actions .mobile-icon-button { width: 48px; height: 48px; min-width: 48px; min-height: 48px; }
+.mobile-artist-main-play { width: 64px; height: 64px; min-width: 64px; min-height: 64px; }
+.mobile-artist-body { gap: 16px; }
+.mobile-artist-featured { grid-template-columns: 72px minmax(0,1fr) 20px; padding: 12px; border: 0; border-radius: 12px; box-shadow: none; }
+.mobile-artist-featured-art { width: 72px; height: 72px; border-radius: 8px; }
+.mobile-artist-featured-copy strong { font-weight: 550; }
+.mobile-artist-featured-copy small { font-size: 13px; }
+.mobile-artist-source button, .mobile-artist-tabs button { min-height: 44px; font-size: 13px; font-weight: 450; }
+.mobile-artist-source button[aria-pressed="true"], .mobile-artist-tabs button[aria-selected="true"] { font-weight: 600; }
+.mobile-artist-tabs button[aria-selected="true"] { text-decoration: underline; text-underline-offset: 5px; }
+.mobile-artist-track, .mobile-artist-track-main { min-height: 72px; }
+.mobile-artist-about { border: 0; border-radius: 12px; }
+.mobile-menu-actions > button, .mobile-menu-playlists > button { border-radius: 8px; font-size: 16px; font-weight: 450; }
+.mobile-menu-actions > button > span > small { font-size: 13px; }
+.mobile-menu-actions > button.mobile-menu-next { background: var(--mobile-raised); }
+.mobile-menu-actions > button.mobile-menu-next svg { color: var(--mobile-text); }
+.mobile-wave-filter, .mobile-eq-card { border-radius: 12px; box-shadow: none; }
+.mobile-wave-filter > summary { font-size: 16px; font-weight: 500; }
+.mobile-eq-presets button, .mobile-wave-chips button { min-height: 44px; border-radius: 8px; font-weight: 450; }
+.mobile-app .mobile-now-extras .mobile-icon-button { min-width: 44px; min-height: 44px; }
+.mobile-now-queue { color: var(--mobile-muted); font-size: 13px; }
+.mobile-player-copy strong { font-weight: 550; }
+.mobile-app[data-text-size="large"] .mobile-home .mobile-album strong, .mobile-app[data-text-size="large"] .mobile-menu-actions > button { font-size: 17px; }
+.mobile-home .mobile-album-caption { align-items: center; min-height: 44px; }
+.mobile-home .mobile-album-caption .mobile-album-artist { flex: 1; margin-top: 0; }
+.mobile-home .mobile-album-artist .artist-link { min-height: 44px; display: inline-flex; align-items: center; padding: 0; }
+.mobile-home .mobile-album-menu { min-height: 44px; }
+.mobile-player.expanded[data-edge-back] { translate: var(--mobile-back-x, 0px) var(--mobile-player-dismiss-y, 0px); box-shadow: -8px 0 24px rgb(0 0 0 / .24); }
+.mobile-player.expanded[data-edge-back="settling"] { transition: translate 220ms cubic-bezier(0.2, 0, 0, 1); }
+.mobile-player.expanded[data-edge-back] > .mobile-back-preview { z-index: -1; }
+.mobile-player.expanded[data-back-reduced="true"] { translate: none; }
+.mobile-equalizer .mobile-preference-card { border: 0; border-radius: 12px; box-shadow: none; }
+.mobile-equalizer .mobile-preference-row strong { font-size: 16px; font-weight: 450; }
+.mobile-player.expanded[data-edge-back="dragging"] { transition: none; }
+.mobile-app .search-playlist-track { position: relative; }
+.mobile-app .mobile-search-track-play { position: absolute; inset: 0 48px 0 0; min-width: 44px; min-height: 44px; border-radius: inherit; background: transparent; }
+.mobile-app .mobile-search-track-play:active { transform: none; }
+.mobile-app .track-row-card .artist-tag, .mobile-app .search-playlist-track .artist-tag, .mobile-app .track-row-actions { position: relative; z-index: 1; }
+.mobile-app .mobile-search-track-play:focus-visible { outline-offset: -3px; }
+
+/* iOS artist uses the public WKWebView scroll view for both web content and
+   native glass buttons. Other panes retain their independent scroll state. */
+html:has(body[data-ios-scroll="artist"]), body[data-ios-scroll="artist"] { height: auto; overflow-x: hidden; overflow-y: auto; }
+body[data-ios-scroll="artist"] .mobile-app { height: auto; min-height: 100dvh; overflow: visible; }
+body[data-ios-scroll="artist"] .mobile-navigation-stage { flex: none; overflow: visible; min-height: 100dvh; }
+body[data-ios-scroll="artist"] .mobile-navigation-stage > .mobile-navigation-surface { position: relative; min-height: 100dvh; }
+body[data-ios-scroll="artist"] .mobile-content { flex: none; overflow: visible; }
+body[data-ios-scroll="artist"] .mobile-content > .mobile-artist-pane { position: relative; height: auto; min-height: 100dvh; overflow: visible; }
+body[data-ios-scroll="artist"]:has(.mobile-player.expanded:not([inert]), dialog[open], [aria-modal="true"]) { overflow: hidden; }
+
+/* The artwork and the lyrics are two states of one player, with controls
+   anchored below. Only transforms/opacity change during the transition. */
+.mobile-now-artwork { position: absolute; top: 50%; left: 50%; z-index: 0; display: grid; place-items: center; width: var(--player-art-size, 280px); height: var(--player-art-size, 280px); padding: 0; overflow: hidden; border-radius: 14px; background: var(--mobile-surface); color: var(--mobile-muted); outline: 1px solid rgb(255 255 255 / .1); transform: translate(-50%, -50%); opacity: 1; transition: transform 360ms cubic-bezier(0.22, 1, 0.36, 1), opacity 360ms ease, border-radius 360ms ease; }
+.mobile-now-artwork img { width: 100%; height: 100%; object-fit: cover; }
+.mobile-app .mobile-now-artwork:active:not(:disabled) { transform: translate(-50%, -50%) scale(.96); }
+.mobile-now-artwork.is-background { transform: translate(calc(-50% + var(--player-art-shift-x, 0px)), calc(-50% + var(--player-art-shift, 0px))) scale(var(--player-art-scale, 3)); border-radius: 0; opacity: .22; pointer-events: none; }
+.mobile-now-panel .mobile-now-art > img { opacity: .3; }
+.mobile-now-panel .mobile-now-header { min-height: 32px; }
+.mobile-now-panel .mobile-now-track-heading { position: relative; grid-template-columns: minmax(0, 1fr) 44px 44px; min-height: 76px; transform: translateY(0); transition: transform 360ms cubic-bezier(0.22, 1, 0.36, 1); }
+.mobile-now-panel .mobile-now-cover { position: absolute; left: 0; top: 12px; width: 52px; height: 52px; opacity: 0; transform: scale(.72); pointer-events: none; transition: transform 360ms cubic-bezier(0.22, 1, 0.36, 1), opacity 180ms ease; }
+.mobile-now-panel .mobile-now-title { min-width: 0; transform: translateX(0); transition: transform 360ms cubic-bezier(0.22, 1, 0.36, 1); }
+.mobile-now-panel .mobile-now-title h1 { font-size: 22px; }
+.mobile-now-panel .mobile-now-title p { font-size: 17px; }
+.mobile-now-panel.show-lyrics .mobile-now-track-heading { transform: translateY(var(--player-heading-shift, -300px)); }
+.mobile-now-panel.show-lyrics .mobile-now-cover { opacity: 1; transform: scale(1); }
+.mobile-now-panel.show-lyrics .mobile-now-title { max-width: calc(100% - 66px); transform: translateX(66px); }
+.mobile-now-panel.show-lyrics .mobile-now-title h1 { font-size: 17px; }
+.mobile-now-panel.show-lyrics .mobile-now-title p { font-size: 13px; }
+.mobile-now-panel .mobile-now-middle > .mobile-now-lyrics { inset: 88px 0 12px; z-index: 2; }
+.mobile-now-panel .mobile-now-controls { border: 0; background: transparent; box-shadow: none; }
+.mobile-now-panel .mobile-now-controls .mobile-icon-button { background: transparent; }
+.mobile-now-panel .mobile-now-controls .mobile-icon-button svg { width: 34px; height: 34px; stroke-width: 1; }
+.mobile-now-panel .mobile-play-large { width: 76px; height: 76px; flex-basis: 76px; }
+.mobile-player:not(.expanded) { border-radius: 30px; padding: 4px 8px; }
+.mobile-player:not(.expanded) .mobile-icon-button { width: 44px; min-width: 44px; background: transparent; }
+.mobile-player:not(.expanded) .mobile-icon-button svg { stroke-width: 1.5; }
+.mobile-artist-main-play { width: 64px; height: 64px; }
+.mobile-app[data-motion="off"] .mobile-now-artwork, .mobile-app[data-motion="off"] .mobile-now-track-heading, .mobile-app[data-motion="off"] .mobile-now-cover, .mobile-app[data-motion="off"] .mobile-now-title { transition: none; }
+@media (prefers-reduced-motion: reduce) { .mobile-now-artwork, .mobile-now-track-heading, .mobile-now-cover, .mobile-now-title { transition: none !important; } }
+@media (orientation: landscape) and (max-height: 540px) { .mobile-now-panel .mobile-now-track-heading { min-height: 64px; } .mobile-now-panel.show-lyrics .mobile-now-track-heading { transform: none; } .mobile-now-panel.show-lyrics .mobile-now-title { transform: none; max-width: 100%; } .mobile-now-panel.show-lyrics .mobile-now-cover { opacity: 0; } .mobile-now-panel .mobile-now-middle > .mobile-now-lyrics { inset: 8px 0; } .mobile-now-panel .mobile-now-cover { width: 44px; height: 44px; } }

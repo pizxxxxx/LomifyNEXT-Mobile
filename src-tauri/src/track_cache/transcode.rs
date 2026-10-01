@@ -1,4 +1,4 @@
-//! Cross-platform audio transcoding via a managed `ffmpeg` binary.
+//! Audio transcoding via linked libraries on iOS and a managed binary elsewhere.
 //!
 //! ffmpeg is acquired through the `ffmpeg-sidecar` crate: on first run it is
 //! downloaded for the host OS into a writable app dir (the app is always online
@@ -16,15 +16,30 @@
 //! a loss mid-rename leaves either the old file or the new one, never a torn one.
 
 use std::path::{Path, PathBuf};
+#[cfg(not(target_os = "ios"))]
 use std::process::Stdio;
 use std::time::{SystemTime, UNIX_EPOCH};
 
+#[cfg(not(target_os = "ios"))]
 use tokio::process::Command;
+
+#[cfg(not(target_os = "ios"))]
+pub type Backend = PathBuf;
+#[cfg(not(target_os = "ios"))]
+pub fn backend_label(backend: &Backend) -> String {
+    backend.display().to_string()
+}
+#[cfg(target_os = "ios")]
+pub use super::transcode_ios::{
+    acquire_ffmpeg, backend_label, export_with_cover, probe_duration_ms, transcode_to_m4a, Backend,
+};
 
 /// AAC bitrate for re-encoded output. Matches the storage canonical (256k m4a);
 /// sources that are already AAC are stream-copied and keep their original rate.
+#[cfg(not(target_os = "ios"))]
 const AAC_BITRATE: &str = "256k";
 
+#[cfg(not(target_os = "ios"))]
 fn ffmpeg_bin_name() -> &'static str {
     if cfg!(windows) {
         "ffmpeg.exe"
@@ -37,7 +52,8 @@ fn ffmpeg_bin_name() -> &'static str {
 /// `install_dir`, a system `ffmpeg` on PATH, then a fresh download into
 /// `install_dir`. Returns `None` when none can be obtained (cache then serves
 /// raw bytes). Safe to call repeatedly — it no-ops once a binary is present.
-pub async fn acquire_ffmpeg(install_dir: &Path) -> Option<PathBuf> {
+#[cfg(not(target_os = "ios"))]
+pub async fn acquire_ffmpeg(install_dir: &Path) -> Option<Backend> {
     let bundled = install_dir.join(ffmpeg_bin_name());
     if bundled.is_file() && ffmpeg_runs(&bundled).await {
         return Some(bundled);
@@ -54,6 +70,7 @@ pub async fn acquire_ffmpeg(install_dir: &Path) -> Option<PathBuf> {
 /// Whether `program -version` runs successfully — used both to detect a system
 /// ffmpeg and to exec-test a freshly downloaded binary (rejects a wrong-arch or
 /// corrupt download before we trust it).
+#[cfg(not(target_os = "ios"))]
 async fn ffmpeg_runs(program: &Path) -> bool {
     let mut cmd = Command::new(program);
     cmd.arg("-version")
@@ -71,6 +88,7 @@ async fn ffmpeg_runs(program: &Path) -> bool {
 /// it runs. Blocking work (ureq + archive extraction) runs off the async runtime.
 /// Returns `None` on an unsupported target, a failed download, or a binary that
 /// won't execute (e.g. a wrong-arch ARM build) — handled gracefully upstream.
+#[cfg(not(target_os = "ios"))]
 async fn download_ffmpeg(install_dir: &Path) -> Option<PathBuf> {
     let dir = install_dir.to_path_buf();
     let result = tokio::task::spawn_blocking(move || -> Result<(), String> {
@@ -116,7 +134,7 @@ fn nonce() -> u128 {
 }
 
 /// A sibling temp path in `dir` so the final `rename` stays on one filesystem.
-fn temp_sibling(dir: &Path, stem: &str) -> PathBuf {
+pub(super) fn temp_sibling(dir: &Path, stem: &str) -> PathBuf {
     dir.join(format!("{stem}.{}.part.m4a", nonce()))
 }
 
@@ -149,6 +167,7 @@ pub async fn is_m4a(path: &Path) -> bool {
     is_mp4_container(&sniff_head(path, 16).await)
 }
 
+#[cfg(not(target_os = "ios"))]
 fn base_command(ffmpeg: &Path) -> Command {
     let mut cmd = Command::new(ffmpeg);
     cmd.args(["-nostdin", "-hide_banner", "-loglevel", "error", "-y"])
@@ -163,6 +182,7 @@ fn base_command(ffmpeg: &Path) -> Command {
     cmd
 }
 
+#[cfg(not(target_os = "ios"))]
 async fn run(mut cmd: Command, what: &str) -> Result<(), String> {
     let output = cmd
         .output()
@@ -179,6 +199,7 @@ async fn run(mut cmd: Command, what: &str) -> Result<(), String> {
 /// Transcode (or stream-copy) `input` into a canonical m4a at
 /// `out_dir/final_name`, atomically. Already-AAC payloads are copied (near-free);
 /// everything else is encoded to AAC. The temp render is always cleaned up.
+#[cfg(not(target_os = "ios"))]
 pub async fn transcode_to_m4a(
     ffmpeg: &Path,
     input: &Path,
@@ -242,6 +263,7 @@ pub async fn transcode_to_m4a(
 /// Write `audio` (an m4a) to `dest`, optionally muxing in `cover` (JPEG/PNG
 /// bytes) as the file's attached picture. Audio is stream-copied — no quality
 /// loss. Atomic: renders to a temp beside `dest`, then renames.
+#[cfg(not(target_os = "ios"))]
 pub async fn export_with_cover(
     ffmpeg: &Path,
     audio: &Path,
@@ -320,6 +342,7 @@ pub async fn export_with_cover(
 /// Probe a media file's duration in milliseconds via ffmpeg's `Duration:` line.
 /// Used to validate cached files against the API-reported length. `None` when
 /// ffmpeg is unavailable or the line can't be parsed.
+#[cfg(not(target_os = "ios"))]
 pub async fn probe_duration_ms(ffmpeg: &Path, path: &Path) -> Option<u64> {
     let mut cmd = Command::new(ffmpeg);
     cmd.args(["-nostdin", "-hide_banner", "-i"])

@@ -1,17 +1,17 @@
-//! Small Android handoff queue while the WebView is suspended with the screen off.
+//! Mobile handoff queue while the WebView is suspended with the screen off.
 //! The UI still owns queue policy; Rust only plays the candidates it prepared.
-#[cfg(target_os = "android")]
+#[cfg(any(target_os = "android", target_os = "ios"))]
 use std::collections::VecDeque;
 use std::sync::{Mutex, OnceLock};
 
 use serde::{Deserialize, Serialize};
-#[cfg(target_os = "android")]
+#[cfg(any(target_os = "android", target_os = "ios"))]
 use tauri::{AppHandle, Emitter, Manager};
 
-#[cfg(target_os = "android")]
+#[cfg(any(target_os = "android", target_os = "ios"))]
 use super::{engine, state::AudioState};
 
-#[cfg_attr(not(target_os = "android"), allow(dead_code))]
+#[cfg_attr(not(any(target_os = "android", target_os = "ios")), allow(dead_code))]
 #[derive(Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct BackgroundTrack {
@@ -42,9 +42,9 @@ pub struct BackgroundAdvance {
 
 #[derive(Default)]
 struct BackgroundState {
-    #[cfg(target_os = "android")]
+    #[cfg(any(target_os = "android", target_os = "ios"))]
     hidden: bool,
-    #[cfg(target_os = "android")]
+    #[cfg(any(target_os = "android", target_os = "ios"))]
     candidates: VecDeque<BackgroundTrack>,
     status: BackgroundStatus,
 }
@@ -55,7 +55,7 @@ fn state() -> &'static Mutex<BackgroundState> {
     BACKGROUND.get_or_init(|| Mutex::new(BackgroundState::default()))
 }
 
-#[cfg(target_os = "android")]
+#[cfg(any(target_os = "android", target_os = "ios"))]
 pub fn prepare(epoch: u64, candidates: Vec<BackgroundTrack>) {
     let mut background = state().lock().unwrap();
     if epoch < background.status.epoch
@@ -76,7 +76,7 @@ pub fn prepare(epoch: u64, candidates: Vec<BackgroundTrack>) {
     background.candidates = candidates.into();
 }
 
-#[cfg(target_os = "android")]
+#[cfg(any(target_os = "android", target_os = "ios"))]
 pub fn set_hidden(hidden: bool) -> BackgroundStatus {
     let mut background = state().lock().unwrap();
     background.hidden = hidden;
@@ -88,7 +88,7 @@ pub fn status() -> BackgroundStatus {
 }
 
 /// Returns true only when Rust took responsibility for this end event.
-#[cfg(target_os = "android")]
+#[cfg(any(target_os = "android", target_os = "ios"))]
 pub fn try_advance(app: &AppHandle) -> bool {
     let (epoch, candidate) = {
         let mut background = state().lock().unwrap();
@@ -159,13 +159,21 @@ pub fn try_advance(app: &AppHandle) -> bool {
                 });
                 let status = background.status.clone();
                 drop(background);
-                crate::android_media::metadata(
-                    &candidate.title,
-                    &candidate.artist,
-                    candidate.cover_url.as_deref(),
-                    duration.unwrap_or(0.0),
-                );
-                crate::android_media::playback(true, 0.0);
+                #[cfg(target_os = "android")]
+                {
+                    crate::android_media::metadata(
+                        &candidate.title,
+                        &candidate.artist,
+                        candidate.cover_url.as_deref(),
+                        duration.unwrap_or(0.0),
+                    );
+                    crate::android_media::playback(true, 0.0);
+                }
+                #[cfg(target_os = "ios")]
+                {
+                    crate::ios_media::metadata(&candidate.title, &candidate.artist, candidate.cover_url.as_deref(), duration.unwrap_or(0.0));
+                    crate::ios_media::playback(true, 0.0, 1.0);
+                }
                 let _ = app.emit("audio:background-advanced", status);
             }
             Ok(_) => {

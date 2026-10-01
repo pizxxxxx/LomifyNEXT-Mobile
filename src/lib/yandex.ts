@@ -612,6 +612,8 @@ export function mapYandexTrack(raw: any): any | null {
     playbackCount: null,
     likesCount: null,
     releaseDate: album?.releaseDate || (album?.year ? `${album.year}-01-01` : ''),
+    releaseDatePrecision: album?.releaseDate ? 'day' : 'year',
+    label: Array.isArray(album?.labels) ? album.labels.map((label: any) => label?.name).filter(Boolean).join(', ') : '',
     duration: Number(t.durationMs) || 0,
     // Ссылка на поток живёт минуты и подписана — держать её в объекте трека бессмысленно.
     // Её берёт `getAudioUrl` в момент запуска (см. api.ts).
@@ -620,6 +622,13 @@ export function mapYandexTrack(raw: any): any | null {
     source: 'yandex',
     isBanned: t.available === false,
   };
+}
+
+/** Full metadata for one explicitly opened track information sheet. */
+export async function getYandexTrackMetadata(rawToken: string, trackId: string): Promise<any | null> {
+  if (!/^\d+(?::\d+)?$/.test(trackId)) return null;
+  const result = await ymJson(`${API}/tracks?trackIds=${encodeURIComponent(trackId)}`, normalizeYandexToken(rawToken));
+  return Array.isArray(result) ? mapYandexTrack(result[0]) : null;
 }
 
 /** Some list responses omit video metadata; inspect one full track only when its player opens. */

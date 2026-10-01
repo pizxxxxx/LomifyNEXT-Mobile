@@ -1,4 +1,7 @@
 <script lang="ts">
+  import { iosGlassButton } from '$lib/actions/iosGlassButton';
+  import { iosArtistScroll } from '$lib/actions/iosArtistScroll';
+  import { pushMobileHistory } from '$lib/mobileNavigation';
   import { onMount } from 'svelte';
   import { Disc3, Info, Loader2, MoreHorizontal, Music2, Play, RefreshCw, UserRound, ChevronLeft, Star, Share2 } from 'lucide-svelte';
   import { currentArtist, currentTrack, isPlaying, queue, settings, notify } from '$lib/stores';
@@ -26,7 +29,17 @@
   let featuredAlbum = $derived(albums[0]);
   let showAbout = $state(false);
   let isSaved = $derived($mobileSavedArtists.some(artist => mobileArtistKey(artist.name) === mobileArtistKey($currentArtist)));
-  onMount(loadMobileArtists);
+  onMount(() => {
+    loadMobileArtists();
+    const restoreAlbum = (event: PopStateEvent) => {
+      if (event.state?.mobileView !== 'artist') return;
+      const album = albums.find(item => String(item.id) === event.state?.mobileArtistAlbum);
+      if (album) void showAlbum(album, false);
+      else clearAlbum();
+    };
+    window.addEventListener('popstate', restoreAlbum);
+    return () => window.removeEventListener('popstate', restoreAlbum);
+  });
 
   function saveArtist() {
     const saved = toggleMobileArtist($currentArtist, avatar);
@@ -73,7 +86,11 @@
         if (current) loadingTracks = false;
       });
       void getArtistAlbums(name, selectedSource).then(result => {
-        if (current) albums = result;
+        if (current) {
+          albums = result;
+          const album = result.find((item: { id: string | number }) => String(item.id) === history.state?.mobileArtistAlbum);
+          if (album) void showAlbum(album, false);
+        }
       }).catch(() => {}).finally(() => {
         if (current) loadingAlbums = false;
       });
@@ -99,7 +116,8 @@
     isPlaying.set(true);
   }
 
-  async function showAlbum(album: any) {
+  async function showAlbum(album: any, push = true) {
+    if (push) pushMobileHistory({ ...history.state, mobileArtistAlbum: String(album.id) });
     const request = ++albumRequest;
     openAlbum = album;
     tab = 'albums';
@@ -113,6 +131,11 @@
   }
 
   function closeAlbum() {
+    if (history.state?.mobileArtistAlbum) history.back();
+    else clearAlbum();
+  }
+
+  function clearAlbum() {
     albumRequest++;
     openAlbum = null;
     albumTracks = null;
@@ -123,21 +146,21 @@
   }
 </script>
 
-<section class="mobile-artist-page" aria-label={`Исполнитель ${$currentArtist}`}>
+<section class="mobile-artist-page" aria-label={`Исполнитель ${$currentArtist}`} use:iosArtistScroll>
   <header class="mobile-artist-hero">
     {#if avatar}<img class="mobile-artist-portrait" src={coverUrlAtSize(avatar, 800)} alt="" loading="eager" decoding="async" onerror={(event) => handleArtworkError(event, avatar, 800)} onload={handleArtworkLoad} />{:else}<UserRound class="mobile-artist-portrait-fallback" size={120} aria-hidden="true" />{/if}
     <div class="mobile-artist-toolbar">
-      <button class="mobile-icon-button mobile-glass-button" type="button" aria-label="Назад" onclick={() => history.back()}><ChevronLeft size={27} aria-hidden="true" /></button>
-      {#if profile?.permalink}<button class="mobile-icon-button mobile-glass-button" type="button" aria-label="Поделиться исполнителем" onclick={() => void shareArtist()}><Share2 size={23} aria-hidden="true" /></button>{/if}
+      <button class="mobile-icon-button mobile-glass-button" type="button" use:iosGlassButton={{ symbol: 'chevron.left' }} aria-label="Назад" onclick={() => history.back()}><ChevronLeft size={27} aria-hidden="true" /></button>
+      {#if profile?.permalink}<button class="mobile-icon-button mobile-glass-button" type="button" use:iosGlassButton={{ symbol: 'square.and.arrow.up' }} aria-label="Поделиться исполнителем" onclick={() => void shareArtist()}><Share2 size={23} aria-hidden="true" /></button>{/if}
     </div>
     <div class="mobile-artist-hero-content">
       <div class="mobile-artist-identity">
         <h1>{$currentArtist}</h1>
       </div>
       <div class="mobile-artist-hero-actions">
-        <button class="mobile-icon-button mobile-glass-button" type="button" aria-label="Об исполнителе" aria-expanded={showAbout} onclick={() => showAbout = !showAbout}><Info size={24} aria-hidden="true" /></button>
-        <button class="mobile-artist-main-play" type="button" disabled={!tracks.length} aria-label="Слушать треки исполнителя" onclick={() => play(tracks[0], tracks)}>{#if loadingTracks}<Loader2 class="animate-spin" size={29} aria-hidden="true" />{:else}<Play size={32} fill="currentColor" aria-hidden="true" />{/if}</button>
-        <button class="mobile-icon-button mobile-glass-button" type="button" aria-label={isSaved ? 'Убрать исполнителя из медиатеки' : 'Добавить исполнителя в медиатеку'} aria-pressed={isSaved} onclick={saveArtist}><Star size={24} fill={isSaved ? 'currentColor' : 'none'} aria-hidden="true" /></button>
+        <button class="mobile-icon-button mobile-glass-button" type="button" use:iosGlassButton={{ symbol: 'info', selected: showAbout }} aria-label="Об исполнителе" aria-expanded={showAbout} onclick={() => showAbout = !showAbout}><Info size={24} aria-hidden="true" /></button>
+        <button class="mobile-artist-main-play" type="button" disabled={!tracks.length} use:iosGlassButton={{ symbol: loadingTracks ? 'hourglass' : 'play.fill', prominent: true, iconSize: 24 }} aria-label="Слушать треки исполнителя" onclick={() => play(tracks[0], tracks)}>{#if loadingTracks}<Loader2 class="animate-spin" size={29} aria-hidden="true" />{:else}<Play size={32} fill="currentColor" aria-hidden="true" />{/if}</button>
+        <button class="mobile-icon-button mobile-glass-button" type="button" use:iosGlassButton={{ symbol: isSaved ? 'star.fill' : 'star', selected: isSaved }} aria-label={isSaved ? 'Убрать исполнителя из медиатеки' : 'Добавить исполнителя в медиатеку'} aria-pressed={isSaved} onclick={saveArtist}><Star size={24} fill={isSaved ? 'currentColor' : 'none'} aria-hidden="true" /></button>
       </div>
     </div>
   </header>

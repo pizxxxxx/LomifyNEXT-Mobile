@@ -1,17 +1,23 @@
 <script lang="ts">
+  import { pushMobileHistory } from '$lib/mobileNavigation';
   import { onMount, onDestroy, tick as svelteTick } from 'svelte';
   import { cubicOut } from 'svelte/easing';
   import { fade } from 'svelte/transition';
   import { mobileReveal } from '$lib/actions/mobileReveal';
   import { afterMobilePaint } from '$lib/utils/mobilePaint';
-  import { Play, Pause, ChevronDown, Music2, MoreHorizontal, Plus, SlidersHorizontal } from 'lucide-svelte';
+  import { Play, Pause, ChevronDown, Music2, MoreHorizontal, Plus, SlidersHorizontal, FastForward, Rewind, MessageSquareQuote } from 'lucide-svelte';
   import { mobileHold } from '$lib/actions/mobileHold';
+  import { mobileSwipeDismiss } from '$lib/actions/mobileSwipeDismiss';
+  import { mobileSwipeBack } from '$lib/actions/mobileSwipeBack';
+  import { isIOS } from '$lib/mobile';
+  import { iosGlassButton } from '$lib/actions/iosGlassButton';
+  import { mobilePlayerArtwork } from '$lib/actions/mobilePlayerArtwork';
   import { isScWaveTrack, mobileNextQueueIndex, mobileTrackMenu, refillScWave } from '$lib/mobileTracks';
   import MobileVideoBackdrop from './MobileVideoBackdrop.svelte';
   import Lyrics from './Lyrics.svelte';
   export let mobile = false;
   let mobileExpanded = false;
-  let mobileShowLyrics = true;
+  let mobileShowLyrics = false;
   let mobileDetailsReady = false;
   let mobileSeekTime: number | null = null;
   let mobileDisplayTime = 0;
@@ -41,24 +47,30 @@
   }
   function openMobilePlayer() {
     if (mobileExpanded) return;
-    history.pushState({ ...history.state, mobilePlayer: true }, '');
+    pushMobileHistory({ ...history.state, mobilePlayer: true });
     mobileExpanded = true;
   }
   function closeMobilePlayer() {
     mobileExpanded = false;
     if (history.state?.mobilePlayer) history.back();
   }
+  function toggleMobileLyrics() {
+    const fromArtwork = document.activeElement?.classList.contains('mobile-now-artwork');
+    mobileShowLyrics = !mobileShowLyrics;
+    if (mobileShowLyrics && fromArtwork) void svelteTick().then(() => document.querySelector<HTMLButtonElement>('.mobile-lyrics-toggle')?.focus({ preventScroll: true }));
+    document.querySelector('.mobile-player.expanded')?.dispatchEvent(new CustomEvent('lomify:layout-motion', { bubbles: true, detail: { duration: 400 } }));
+  }
   function openMobilePlayerView(view: 'lyrics' | 'equalizer') {
     history.replaceState({ ...history.state, mobilePlayer: false }, '');
     mobileExpanded = false;
     $currentView = view;
   }
-  function mobilePlayerTransition(_node: Element, _params: unknown, options: { direction: 'in' | 'out' | 'both' }) {
+  function mobilePlayerTransition(node: Element, _params: unknown, options: { direction: 'in' | 'out' | 'both' }) {
     const reduced = $settings.mobileMotion === false || matchMedia('(prefers-reduced-motion: reduce)').matches;
     return {
-      duration: reduced ? 0 : options.direction === 'out' ? 160 : 240,
+      duration: reduced ? 0 : options.direction === 'out' ? 240 : 320,
       easing: cubicOut,
-      css: (t: number) => `opacity:${t};transform:translateY(${(1 - t) * 28}px)`
+      css: (t: number) => `transform:translateY(${(1 - t) * Math.max(0, node.clientHeight - Number.parseFloat((node as HTMLElement).style.getPropertyValue('--mobile-player-dismiss-y') || '0'))}px);border-radius:${(1 - t) * 32}px`
     };
   }
   function manageMobilePanel(node: HTMLElement, open: boolean) {
@@ -916,6 +928,12 @@
       progress.set(currentTime);
       paintProgress();
     }));
+    trackListener(listen<number>('ios-media:seeked', event => {
+      currentTime = event.payload;
+      mobileDisplayTime = currentTime;
+      progress.set(currentTime);
+      paintProgress();
+    }));
 
     trackListener(listen('tray-action', (event) => {
       const id = event.payload;
@@ -1517,19 +1535,17 @@
 {#if mobile}
   {#if $currentTrack}
     {#if mobileExpanded}
-    <div class="mobile-player expanded mobile-now-panel" inert={!mobileExpanded} aria-hidden={!mobileExpanded} role="region" aria-label="Сейчас играет" use:manageMobilePanel={mobileExpanded} use:mobileHold={{ onHold: () => mobileTrackMenu.set($currentTrack) }} transition:mobilePlayerTransition>
+    <div class="mobile-player expanded mobile-now-panel" class:show-lyrics={mobileShowLyrics} class:ios-swipe-player={isIOS} inert={!mobileExpanded} aria-hidden={!mobileExpanded} role="region" aria-label="Сейчас играет" use:mobileSwipeDismiss={closeMobilePlayer} use:mobileSwipeBack={true} use:manageMobilePanel={mobileExpanded} use:mobilePlayerArtwork use:mobileHold={{ onHold: () => mobileTrackMenu.set($currentTrack) }} transition:mobilePlayerTransition>
         <MobileVideoBackdrop track={$currentTrack} coverUrl={currentDisplayCover} active={$isPlaying && (!mobileShowLyrics || $settings.mobileLyricsVideoBackground !== false)} variant="player" />
         <div class="mobile-now-shade" aria-hidden="true"></div>
         <div class="mobile-now-header">
           <button class="mobile-now-dismiss" aria-label="Свернуть плеер" on:click={closeMobilePlayer}><span aria-hidden="true"></span></button>
-          <div class="mobile-now-track-heading">
-            <span class="mobile-now-cover">{#if currentDisplayCover}<img src={currentDisplayCover} alt="" on:error={(event) => handleArtworkError(event, $currentTrack.coverUrl || '')} on:load={handleArtworkLoad} />{:else}<Music2 size={26} aria-hidden="true" />{/if}</span>
-            <div class="mobile-now-title"><h1>{$currentTrack.title}</h1><p><ArtistTag artist={$currentTrack.artist} artists={$currentTrack.artists} onNavigate={() => { history.replaceState({ ...history.state, mobilePlayer: false }, ''); mobileExpanded = false; }} /></p></div>
-            <button class="mobile-icon-button" aria-label={isLiked ? 'Убрать из любимых' : 'В любимые'} aria-pressed={isLiked} on:click={toggleLike}><Heart size={24} fill={isLiked ? 'currentColor' : 'none'} /></button>
-            <button class="mobile-icon-button" aria-label="Действия с треком" on:click={() => mobileTrackMenu.set($currentTrack)}><MoreHorizontal size={25} /></button>
-          </div>
+
         </div>
         <div class="mobile-now-middle">
+          <button class="mobile-now-artwork" class:is-background={mobileShowLyrics} aria-label="Показать текст песни" aria-hidden={mobileShowLyrics} tabindex={mobileShowLyrics ? -1 : 0} on:click={toggleMobileLyrics}>
+            {#if currentDisplayCover}<img src={currentDisplayCover} alt="" on:error={(event) => handleArtworkError(event, $currentTrack.coverUrl || '')} on:load={handleArtworkLoad} />{:else}<Music2 size={88} aria-hidden="true" />{/if}
+          </button>
           {#if mobileShowLyrics}
             <section class="mobile-now-lyrics" aria-label="Текст песни" aria-busy={!mobileDetailsReady} transition:mobileLyricsFade>
               {#if mobileDetailsReady}
@@ -1541,19 +1557,25 @@
           {/if}
         </div>
         <div class="mobile-now-bottom">
+          <div class="mobile-now-track-heading">
+            <span class="mobile-now-cover">{#if currentDisplayCover}<img src={currentDisplayCover} alt="" on:error={(event) => handleArtworkError(event, $currentTrack.coverUrl || '')} on:load={handleArtworkLoad} />{:else}<Music2 size={26} aria-hidden="true" />{/if}</span>
+            <div class="mobile-now-title"><h1>{$currentTrack.title}</h1><p><ArtistTag artist={$currentTrack.artist} artists={$currentTrack.artists} onNavigate={() => { history.replaceState({ ...history.state, mobilePlayer: false }, ''); mobileExpanded = false; }} /></p></div>
+            <button class="mobile-icon-button" use:iosGlassButton={{ symbol: isLiked ? 'heart.fill' : 'heart', selected: isLiked, style: 'plain' }} aria-label={isLiked ? 'Убрать из любимых' : 'В любимые'} aria-pressed={isLiked} on:click={toggleLike}><Heart size={24} fill={isLiked ? 'currentColor' : 'none'} /></button>
+            <button class="mobile-icon-button" use:iosGlassButton={{ symbol: 'ellipsis', style: 'plain' }} aria-label="Действия с треком" on:click={() => mobileTrackMenu.set($currentTrack)}><MoreHorizontal size={25} /></button>
+          </div>
           <label class="mobile-seek"><span class="sr-only">Позиция воспроизведения</span><input type="range" min="0" max={duration || 1} step="1" value={mobileSeekTime ?? mobileDisplayTime} style={`--seek-progress:${duration ? Math.min(100, (mobileSeekTime ?? mobileDisplayTime) / duration * 100) : 0}%`} disabled={!duration} on:input={(event) => mobileSeekTime = Number(event.currentTarget.value)} on:change={(event) => { seekTo(Number(event.currentTarget.value)); mobileSeekTime = null; }} on:pointercancel={() => mobileSeekTime = null} /></label>
           <div class="mobile-time"><span>{formatTime(mobileSeekTime ?? mobileDisplayTime)}</span><span>{formatTime(duration)}</span></div>
           <div class="mobile-now-controls">
-            <button class="mobile-icon-button" aria-label="Предыдущий трек" on:click={playPrev}><SkipBack size={27} fill="currentColor" /></button>
-            <button class="mobile-play-large" aria-label={loadingGeneration !== null ? 'Отменить загрузку' : $isPlaying ? 'Пауза' : 'Воспроизвести'} on:click={toggleMobilePlayback}>{#if loadingGeneration !== null}<Loader2 class="animate-spin" size={28} />{:else}<MorphIcon icon={$isPlaying ? PauseData : PlayData} size={31} fill="currentColor" spring="snappy" reducedMotion="user" />{/if}</button>
-            <button class="mobile-icon-button" aria-label="Следующий трек" on:click={() => playNext()}><SkipForward size={27} fill="currentColor" /></button>
+            <button class="mobile-icon-button" use:iosGlassButton={{ symbol: 'backward.fill', iconSize: 30, style: 'plain' }} aria-label="Предыдущий трек" on:click={playPrev}><Rewind size={27} fill="currentColor" strokeWidth={0} /></button>
+            <button class="mobile-play-large" use:iosGlassButton={{ symbol: loadingGeneration !== null ? 'xmark' : $isPlaying ? 'pause.fill' : 'play.fill', style: 'plain', iconSize: 43 }} aria-label={loadingGeneration !== null ? 'Отменить загрузку' : $isPlaying ? 'Пауза' : 'Воспроизвести'} on:click={toggleMobilePlayback}>{#if loadingGeneration !== null}<Loader2 class="animate-spin" size={28} />{:else}<MorphIcon icon={$isPlaying ? PauseData : PlayData} size={31} fill="currentColor" spring="snappy" reducedMotion="user" />{/if}</button>
+            <button class="mobile-icon-button" use:iosGlassButton={{ symbol: 'forward.fill', iconSize: 30, style: 'plain' }} aria-label="Следующий трек" on:click={() => playNext()}><FastForward size={27} fill="currentColor" strokeWidth={0} /></button>
           </div>
           {#if loadingGeneration !== null}<p class="mobile-player-status" role="status">Загружаем трек... Нажми воспроизведение, чтобы отменить.</p>{:else if mobileLoadError}<p class="mobile-player-status mobile-error" role="status">{mobileLoadError}</p>{/if}
           <div class="mobile-now-extras">
-            <button class="mobile-icon-button" aria-label={mobileShowLyrics ? 'Скрыть текст' : 'Показать текст'} aria-pressed={mobileShowLyrics} on:click={() => mobileShowLyrics = !mobileShowLyrics}><Mic2 size={23} /></button>
-            <button class="mobile-icon-button" aria-label="Перемешивание" aria-pressed={isShuffle} on:click={() => isShuffle = !isShuffle}><Shuffle size={23} /></button>
-            <button class="mobile-icon-button" aria-label={repeatMode === 2 ? 'Повтор одного трека' : repeatMode === 1 ? 'Повтор всей очереди' : 'Повтор выключен'} aria-pressed={repeatMode > 0} on:click={() => repeatMode = (repeatMode + 1) % 3}><Repeat size={23} />{#if repeatMode === 2}<span class="mobile-repeat-one">1</span>{/if}</button>
-            <button class="mobile-icon-button" aria-label="Эквалайзер" on:click={() => openMobilePlayerView('equalizer')}><SlidersHorizontal size={23} /></button>
+            <button class="mobile-icon-button mobile-lyrics-toggle" use:iosGlassButton={{ symbol: mobileShowLyrics ? 'quote.bubble.fill' : 'quote.bubble', selected: mobileShowLyrics, style: 'plain' }} aria-label={mobileShowLyrics ? 'Скрыть текст' : 'Показать текст'} aria-pressed={mobileShowLyrics} on:click={toggleMobileLyrics}><MessageSquareQuote size={23} /></button>
+            <button class="mobile-icon-button" use:iosGlassButton={{ symbol: 'shuffle', selected: isShuffle, style: 'plain' }} aria-label="Перемешивание" aria-pressed={isShuffle} on:click={() => isShuffle = !isShuffle}><Shuffle size={23} /></button>
+            <button class="mobile-icon-button" use:iosGlassButton={{ symbol: repeatMode === 2 ? 'repeat.1' : 'repeat', selected: repeatMode > 0, style: 'plain' }} aria-label={repeatMode === 2 ? 'Повтор одного трека' : repeatMode === 1 ? 'Повтор всей очереди' : 'Повтор выключен'} aria-pressed={repeatMode > 0} on:click={() => repeatMode = (repeatMode + 1) % 3}><Repeat size={23} />{#if repeatMode === 2}<span class="mobile-repeat-one">1</span>{/if}</button>
+            <button class="mobile-icon-button" use:iosGlassButton={{ symbol: 'slider.horizontal.3', style: 'plain' }} aria-label="Эквалайзер" on:click={() => openMobilePlayerView('equalizer')}><SlidersHorizontal size={23} /></button>
           </div>
           {#if $queue.length > 0}<button class="mobile-now-queue" aria-label={`Следующий трек: ${$queue[0].title}`} on:click={() => playNext()}><span>{isShuffle ? 'Перемешивание' : 'Далее'}</span><strong>{$queue[0].title}</strong><SkipForward size={17} aria-hidden="true" /></button>{/if}
         </div>
@@ -1561,8 +1583,8 @@
     {/if}
     <div class="mobile-player" inert={mobileExpanded} aria-hidden={mobileExpanded} use:mobileMiniSwipe>
         <button class="mobile-mini-info" aria-label={`Открыть плеер: ${$currentTrack.title}. Смахни влево или вправо, чтобы переключить трек`} on:click={openMobilePlayer}><span class="mobile-mini-art"><Music2 size={22} />{#if currentDisplayCover}<img src={currentDisplayCover} alt="" on:error={(event) => handleArtworkError(event, $currentTrack.coverUrl || '')} on:load={handleArtworkLoad} />{/if}</span><span class="mobile-player-copy"><strong>{$currentTrack.title}</strong><small>{loadingGeneration !== null ? 'Загружаем трек…' : mobileLoadError ? 'Не играет · нажми для повтора' : $currentTrack.artist}</small></span></button>
-        <button class="mobile-icon-button" aria-label={loadingGeneration !== null ? 'Отменить загрузку' : $isPlaying ? 'Пауза' : 'Воспроизвести'} on:click={toggleMobilePlayback}>{#if loadingGeneration !== null}<Loader2 class="animate-spin" size={24} />{:else}<MorphIcon icon={$isPlaying ? PauseData : PlayData} size={24} fill="currentColor" spring="snappy" reducedMotion="user" />{/if}</button>
-        <button class="mobile-icon-button" aria-label="Следующий трек" on:click={() => playNext()}><SkipForward size={23} /></button>
+        <button class="mobile-icon-button" use:iosGlassButton={{ symbol: loadingGeneration !== null ? 'xmark' : $isPlaying ? 'pause.fill' : 'play.fill', style: 'plain', iconSize: 22 }} aria-label={loadingGeneration !== null ? 'Отменить загрузку' : $isPlaying ? 'Пауза' : 'Воспроизвести'} on:click={toggleMobilePlayback}>{#if loadingGeneration !== null}<Loader2 class="animate-spin" size={24} />{:else}<MorphIcon icon={$isPlaying ? PauseData : PlayData} size={24} fill="currentColor" spring="snappy" reducedMotion="user" />{/if}</button>
+        <button class="mobile-icon-button" use:iosGlassButton={{ symbol: 'forward.fill', iconSize: 25, style: 'plain' }} aria-label="Следующий трек" on:click={() => playNext()}><FastForward size={23} fill="currentColor" strokeWidth={0} /></button>
         <div class="mobile-mini-progress" style={`width:${duration ? Math.min(100, mobileDisplayTime / duration * 100) : 0}%`}></div>
     </div>
   {/if}

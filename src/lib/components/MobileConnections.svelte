@@ -7,12 +7,13 @@
   import { openUrl } from '@tauri-apps/plugin-opener';
   import { settings, playlists, currentView } from '$lib/stores';
   import { yandexAccountStatus, normalizeYandexToken } from '$lib/yandex';
+  import { flushStoredState, waitForStoreStorage } from '$lib/storePersistence';
   import MusicServiceIcon from './MusicServiceIcon.svelte';
   import { isMobilePlaylistExcluded } from '$lib/mobileTracks';
 
   const TOKEN_SITE = 'https://ym-token.marshal.dev';
   const TOKEN_REPO = 'https://github.com/MarshalX/yandex-music-token';
-  let { yandexOpen = $bindable(false) }: { yandexOpen?: boolean } = $props();
+  let { yandexOpen = $bindable(false), embedded = false }: { yandexOpen?: boolean; embedded?: boolean } = $props();
   let scOpen = $state(false);
   let token = $state('');
   let profile = $state('');
@@ -56,6 +57,7 @@
       const candidate = normalizeYandexToken(token.trim());
       const account = await bounded(yandexAccountStatus(candidate));
       settings.update(s => ({ ...s, yandexToken: candidate, yandexUser: account, searchSource: 'yandex' }));
+      if (!await flushStoredState('lomifynext_settings')) throw new Error('Storage unavailable');
       token = ''; showToken = false;
       ymStatus = 'Аккаунт подключён. Теперь можно искать музыку и импортировать любимые треки с плейлистами.';
     } catch {
@@ -93,6 +95,7 @@
     busy = service; stage = 'Загружаем любимые треки…';
     if (service === 'yandex') { ymError = ''; ymStatus = ''; } else { scError = ''; scStatus = ''; }
     try {
+      await waitForStoreStorage();
       const { syncLikes } = await import('$lib/likes');
       const result = await syncLikes({ only: service, silent: true });
       let importedPlaylists = 0;
@@ -105,6 +108,7 @@
         stage = 'Загружаем плейлисты Яндекса…';
         importedPlaylists = await syncPlaylists('yandex');
       }
+      if (!await flushStoredState()) throw new Error('Storage unavailable');
       const partial = result.failed.length > 0 || result.partial.length > 0 || !!$playlistSyncStatus[service].error;
       const message = `${partial || failedPlaylists ? 'Источник ответил не полностью. ' : ''}Любимые треки: +${result.added}${result.removed ? `, убрано ${result.removed}` : ''}. Новых плейлистов: ${importedPlaylists}.${failedPlaylists ? ` Не загрузилось: ${failedPlaylists}.` : ''} ${partial || failedPlaylists ? 'Можно повторить импорт позже.' : 'Открой «Медиатеку», чтобы послушать.'}`;
       if (service === 'yandex') ymStatus = message; else scStatus = message;
@@ -121,8 +125,7 @@
   }
 </script>
 
-<details class="mobile-preference-group mobile-settings-fold mobile-connections-fold" bind:open={sectionOpen}>
-  <summary><Music2 size={18} aria-hidden="true" /><span>Музыка и аккаунты<small>{$settings.searchSource === 'yandex' ? 'Яндекс Музыка' : 'SoundCloud'} · подключение и импорт</small></span><ChevronRight size={18} aria-hidden="true" /></summary>
+{#snippet connectionsContent()}
   <div class="mobile-settings-fold-content">
   <div class="mobile-preference-card">
     <div class="mobile-preference-label"><span>Источник музыки и станции</span></div>
@@ -196,4 +199,13 @@
   {#if linkError}<p class="mobile-error" role="alert">{linkError}</p>{/if}
   <p class="mobile-settings-note">Громкость регулируется кнопками телефона. Подключать аккаунты для поиска в SoundCloud необязательно.</p>
   </div>
-</details>
+{/snippet}
+
+{#if embedded}
+  {@render connectionsContent()}
+{:else}
+  <details class="mobile-preference-group mobile-settings-fold mobile-connections-fold" bind:open={sectionOpen}>
+    <summary><Music2 size={18} aria-hidden="true" /><span>Музыка и аккаунты<small>{$settings.searchSource === 'yandex' ? 'Яндекс Музыка' : 'SoundCloud'} · подключение и импорт</small></span><ChevronRight size={18} aria-hidden="true" /></summary>
+    {@render connectionsContent()}
+  </details>
+{/if}

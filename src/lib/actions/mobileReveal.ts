@@ -9,8 +9,9 @@ export function mobileReveal(node: HTMLElement, active: boolean | string) {
     const from = interrupted ? { opacity: interrupted.opacity, transform: interrupted.transform } : null;
     animation?.cancel();
     animation = undefined;
-    if (!visible || node.closest('[data-motion="off"], [data-input="keyboard"]')) return;
+    if (!visible || node.closest('[data-motion="off"], [data-input="keyboard"], [data-edge-back]')) return;
     const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
+    node.dispatchEvent(new CustomEvent('lomify:layout-motion', { bubbles: true, detail: { duration: reduced ? 120 : 200 } }));
     animation = node.animate(
       reduced ? [{ opacity: from?.opacity ?? .8 }, { opacity: 1 }] :
         [from ?? { opacity: .75, transform: 'translateY(8px)' }, { opacity: 1, transform: 'none' }],

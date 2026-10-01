@@ -647,6 +647,7 @@
                       <!-- svelte-ignore a11y-click-events-have-key-events -->
                       <!-- svelte-ignore a11y-no-static-element-interactions -->
                       <div class="search-playlist-track group/playlist-track" class:is-active={playlistTrackActive} on:click={() => { queue.set(pl.tracks.slice(i + 1)); currentTrack.set(pt); isPlaying.set(true); }}>
+                        {#if isMobile}<button type="button" class="mobile-search-track-play" use:mobileHold={{ onHold: () => openMobileTrackMenu(pt) }} aria-label={`Слушать ${pt.title}`} on:click={(event) => { event.stopPropagation(); queue.set(pl.tracks.slice(i + 1)); currentTrack.set(pt); isPlaying.set(true); }}></button>{/if}
                         <span class="tnum">{i + 1}</span>
                         <span class="search-playlist-track-art">{#if pt.coverUrl}<img src={coverUrlAtSize(pt.coverUrl, 50)} alt="" width="36" height="36" loading="lazy" decoding="async" />{:else}<Music size={16} />{/if}</span>
                         <span class="search-playlist-track-copy"><strong>{pt.title}</strong><small><ArtistTag artist={pt.artist} artists={pt.artists} /></small></span>
@@ -678,6 +679,7 @@
             <!-- svelte-ignore a11y-click-events-have-key-events -->
             <!-- svelte-ignore a11y-no-static-element-interactions -->
             <div class="track-row-card group interactive-item {isActive ? 'is-active' : ''} {track.isBanned ? 'is-banned' : ''}" class:has-open-menu={showPlaylistMenuId === rowKey} use:mobileHold={{ onHold: () => openMobileTrackMenu(track) }} on:click={() => playTrack(track)}>
+              {#if isMobile}<button type="button" class="mobile-search-track-play" use:mobileHold={{ onHold: () => openMobileTrackMenu(track) }} aria-label={`Слушать ${track.title}`} on:click={(event) => { event.stopPropagation(); playTrack(track); }}></button>{/if}
               <TrackStatus index={topResult ? i + 1 : i} {isActive} playing={$isPlaying} banned={track.isBanned} size="md" />
               <div class="track-row-art">
                 {#if track.coverUrl}<img src={coverUrlAtSize(track.coverUrl, 120)} alt="" width="48" height="48" loading="lazy" decoding="async" />{:else}<div class="track-row-art-empty"><Music size={20} /></div>{/if}

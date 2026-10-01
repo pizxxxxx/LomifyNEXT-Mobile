@@ -175,17 +175,17 @@ pub fn audio_is_playing(state: State<'_, AudioState>) -> bool {
 
 #[tauri::command]
 pub fn audio_background_prepare(epoch: u64, candidates: Vec<BackgroundTrack>) {
-    #[cfg(target_os = "android")]
+    #[cfg(any(target_os = "android", target_os = "ios"))]
     background::prepare(epoch, candidates);
-    #[cfg(not(target_os = "android"))]
+    #[cfg(not(any(target_os = "android", target_os = "ios")))]
     let _ = (epoch, candidates);
 }
 
 #[tauri::command]
 pub fn audio_background_set_hidden(hidden: bool) -> BackgroundStatus {
-    #[cfg(target_os = "android")]
+    #[cfg(any(target_os = "android", target_os = "ios"))]
     return background::set_hidden(hidden);
-    #[cfg(not(target_os = "android"))]
+    #[cfg(not(any(target_os = "android", target_os = "ios")))]
     {
         let _ = hidden;
         BackgroundStatus::default()
@@ -207,6 +207,8 @@ pub fn audio_set_metadata(
 ) {
     #[cfg(target_os = "android")]
     crate::android_media::metadata(&title, &artist, cover_url.as_deref(), duration_secs);
+    #[cfg(target_os = "ios")]
+    crate::ios_media::metadata(&title, &artist, cover_url.as_deref(), duration_secs);
     engine::set_metadata(title, artist, cover_url, duration_secs, state);
 }
 
@@ -214,6 +216,8 @@ pub fn audio_set_metadata(
 pub fn audio_set_playback_state(playing: bool, app: AppHandle, state: State<'_, AudioState>) {
     #[cfg(target_os = "android")]
     crate::android_media::playback(playing, engine::get_position(app.state::<AudioState>()));
+    #[cfg(target_os = "ios")]
+    crate::ios_media::playback(playing, engine::get_position(app.state::<AudioState>()), *state.playback_rate.lock().unwrap() as f64);
     #[cfg(not(target_os = "android"))]
     let _ = app;
     engine::set_playback_state(playing, state);
@@ -223,6 +227,8 @@ pub fn audio_set_playback_state(playing: bool, app: AppHandle, state: State<'_, 
 pub fn audio_set_media_position(position: f64, state: State<'_, AudioState>) {
     #[cfg(target_os = "android")]
     crate::android_media::position(position);
+    #[cfg(target_os = "ios")]
+    crate::ios_media::playback(engine::is_playing(state.clone()), position, *state.playback_rate.lock().unwrap() as f64);
     engine::set_media_position(position, state);
 }
 

@@ -7,6 +7,11 @@ mod audio;
 mod auth;
 mod discord;
 mod import;
+#[cfg(target_os = "ios")]
+mod ios_audio;
+#[cfg(target_os = "ios")]
+mod ios_media;
+mod ios_navigation;
 mod network;
 mod shared;
 mod track_cache;
@@ -100,6 +105,8 @@ pub fn run() {
         .setup(move |app| {
             #[cfg(target_os = "android")]
             android_audio::initialize()?;
+            #[cfg(target_os = "ios")]
+            ios_audio::initialize_session()?;
             request_low_webview_memory(app);
 
             let cache_dir = app
@@ -185,9 +192,10 @@ pub fn run() {
             track_cache_state.set_app_handle(app.handle().clone());
             let recovery_state = track_cache_state.clone();
             app.manage(track_cache_state);
-            #[cfg(not(any(target_os = "android", target_os = "ios")))]
+            #[cfg(not(target_os = "android"))]
             {
                 // Acquire ffmpeg (system PATH or one-time download) in the background,
+                // or use the statically linked library backend on iOS.
                 // then sweep interrupted temps and resume transcoding raw files left
                 // by a previous crash/close.
                 rt_handle.spawn(async move {
@@ -197,7 +205,7 @@ pub fn run() {
 
             }
 
-            #[cfg(any(target_os = "android", target_os = "ios"))]
+            #[cfg(target_os = "android")]
             let _ = (recovery_state, ffmpeg_dir);
 
             let audio_state = audio::init();
@@ -205,6 +213,8 @@ pub fn run() {
             app.manage(audio_state);
             #[cfg(target_os = "android")]
             android_media::initialize(app.handle())?;
+            #[cfg(target_os = "ios")]
+            ios_media::initialize(app.handle())?;
             audio::start_tick_emitter(app.handle());
             #[cfg(not(any(target_os = "android", target_os = "ios")))]
             {
@@ -255,6 +265,8 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             exit_app,
+            ios_navigation::ios_navigation_update,
+            ios_navigation::ios_glass_buttons_update,
             network::server::get_server_ports,
             app::diagnostics::diagnostics_log,
             discord::commands::discord_connect,

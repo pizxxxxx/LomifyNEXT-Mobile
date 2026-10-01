@@ -3,6 +3,8 @@ import { writable } from 'svelte/store';
 /** One-shot navigation request from the wave's sign-in button. Never contains credentials. */
 export const mobileConnectionRequest = writable<'yandex' | null>(null);
 
+export const isIOS = typeof navigator !== 'undefined' && /iPhone|iPad/i.test(navigator.userAgent);
+
 /** Native Android and iOS use the phone shell, including tablets and landscape. */
 export const isMobile = typeof navigator !== 'undefined' &&
   (/Android|iPhone|iPad/i.test(navigator.userAgent) ||

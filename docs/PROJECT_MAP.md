@@ -1,7 +1,7 @@
 # LomifyNEXT project map
 
-Last verified: 2026-09-30  
-Indexed desktop base: 9.3.2. Current mobile worktree: 1.0.16 beta (see the mobile section).
+Last verified: 2026-10-01
+Indexed desktop base: 9.3.2. Current mobile worktree: 1.0.23 beta (see the mobile section).
 
 This file is the navigation index for the repository. Read it before broad exploration.
 It explains where a change normally belongs; source code is still the final authority.
@@ -438,7 +438,7 @@ When changing the application version, verify all of these locations:
 2. `src-tauri/Cargo.toml` — Rust package version.
 3. `src-tauri/tauri.conf.json` — Tauri bundle version.
 4. `src/lib/version.ts` — UI-visible version and channel.
-5. `src/lib/changelog.ts` for in-app notices and `docs/releases/v1.0.16.md` for current GitHub release notes.
+5. `src/lib/changelog.ts` for in-app notices and `docs/releases/v1.0.16.md` for the published GitHub release notes; `docs/releases/v1.0.17.md`, `docs/releases/v1.0.18.md`, `docs/releases/v1.0.19.md`, `docs/releases/v1.0.20.md` and `docs/releases/v1.0.21.md` describe prior local builds; `docs/releases/v1.0.22.md` describes a prior local build; `docs/releases/v1.0.23.md` describes the current build. Every newly delivered iteration increases the visible version via `npm run version:next`; see `docs/MOBILE_VERSIONING.md`.
    Current GitHub notes describe changes since the published 1.0.15 release.
    The 1.0.12 GitHub notes aggregate changes since the last published version, 1.0.10;
    the intermediate local build 1.0.11 was not published.
@@ -635,15 +635,15 @@ owned by `src/lib/mobile.ts` (Android/iOS user agent; `?mobile` for development 
 - `src-tauri/gen/android/.../MainActivity.kt` disables WebView pinch zoom and allows
   user-started delayed preview playback.
 - `src/lib/changelog.ts`: structured Android preview notes for this mobile worktree.
-  Android version is `1.0.16` in npm/Cargo/Tauri metadata and `src/lib/version.ts`.
-  `bundle.android.versionCode` is 9010007, above earlier Android test installs.
+  Android version is `1.0.23` in npm/Cargo/Tauri metadata and `src/lib/version.ts`.
+  `bundle.android.versionCode` is 9010015, above earlier Android test installs.
 - `src/lib/mobileUpdateCore.ts`: pure semantic-version comparison and strict GitHub
   ARM64 APK asset selection; the APK name, not its GitHub release tag, is authoritative.
   `src/lib/mobileUpdates.ts` checks the public GitHub releases API on Android launch/
   resume or manual request, stores a 6-hour result in `lomifynext_mobile_update_check`,
   and opens the selected APK in the system browser for user-confirmed installation.
   `MobileApp.svelte` shows an available-update notice; `MobileSettings.svelte` owns
-  manual check/status and iOS TestFlight guidance. The Tauri updater plugin is not
+  manual check/status and iOS AltStore guidance. The Tauri updater plugin is not
   used because it does not support Android/iOS. `docs/ANDROID_UPDATES.md` describes
   APK naming, monotonic versionCode and same-key signing. `node scripts/mobile-updates-test.mjs`
   covers version/tag mismatch and unsafe asset URLs without network access.
@@ -674,14 +674,16 @@ owned by `src/lib/mobile.ts` (Android/iOS user agent; `?mobile` for development 
 - `src-tauri/src/lib.rs`: Android manages AudioState and tick emitter; does not initialize
   tray, desktop media controls, output monitor or desktop-only plugins.
 - `src-tauri/capabilities/mobile.json`: Android/iOS bridge permissions, separate from
-  desktop default capability. Only Android has been built; iOS is not verified.
+  desktop default capability. Android and iOS device/simulator builds pass locally;
+  physical-device checks remain distinct from compilation.
 - iOS preparation: `src-tauri/src/lib.rs`, `audio/decode.rs`, `audio/mod.rs`, and
   `app/mod.rs` now keep desktop plugins, tray, FFmpeg and media controls off both
-  mobile targets. iOS uses the mobile Symphonia decode path and persistent app-data
-  downloads. `src-tauri/tauri.conf.json > bundle.iOS` sets iOS 15 minimum and build
-  number 10008. `src-tauri/icons/ios/` uses the current plum PC artwork. This is not
-  an iOS build or a verified sound path; the iOS audio session, background playback,
-  lock-screen controls and WKWebView network behavior need Mac/iPhone testing.
+  mobile targets. iOS uses mobile decoding plus the in-process FFmpeg bridge and
+  persistent app-data downloads; no external FFmpeg process is launched on iOS.
+  `src-tauri/tauri.conf.json > bundle.iOS` sets iOS 15 minimum and build number
+  10015. `src-tauri/icons/ios/` uses the current plum PC artwork. AVAudioSession
+  and lock-screen controls are implemented; full playback/background/network
+  validation on the physical iPhone remains pending. See IOS_FFMPEG and IOS_ALTSTORE.
 - `src-tauri/Info.ios.plist` allows only local networking for the app's 127.0.0.1
   artwork/cache server without disabling ATS for external music services.
 - `docs/IOS_SETUP.md`: concrete Mac/Xcode/iPhone first-run and validation steps.
@@ -755,3 +757,93 @@ Bluetooth routing and real-device battery behavior still need device verificatio
   versionCode 9010007, ARM64, minimum API 26, same signing key as 1.0.15 and
   16 KiB page alignment. Browser QA uses synthetic data with 1080 liked tracks at
   375x812 and 812x375; no real-phone smoke test performed.
+
+Local 1.0.17 (2026-10-01, branch `ios`, unpublished): player grid columns use
+`minmax(0, 1fr)` and child width constraints; loading/error text wraps, long errors
+scroll independently, and the lyrics row shrinks on short screens. Favorites use
+a bright white heart on an accent-colored background. WebKit layout QA passes
+20 cases at five portrait/landscape sizes. iOS build 10010; Android versionCode
+9010010. The published 1.0.16 Android signing certificate differs from this Mac's
+debug key; an in-place Android update needs the previous keystore.
+
+Mobile idle work and spacing fixes in 1.0.17 build 10010: unchanged paused
+progress events are suppressed on Android/iOS; UIKit observers ignore ordinary
+track rows and reuse tint; optional depth sensors sleep without visible panels.
+Track row height and virtualization agree at 72px. See MOBILE_PERFORMANCE.md
+and scripts/mobile-idle-test.mjs for validation and physical-device limits.
+
+
+Local 1.0.18 (2026-10-01, branch `ios`, unpublished):
+`MobileSettings.svelte` now presents three groups of navigation rows with
+separate detail screens. Native/browser history carries `mobileSettingsSection`;
+back returns to the overview and its scroll position. Connection UI remains
+mounted after its first visit so navigating within settings does not discard
+an in-progress import. `MobileConnections.svelte` accepts an `embedded` prop.
+All existing setting bindings and import/sync paths remain available; desktop
+settings use their existing component. Settings-specific styles are scoped
+under `.mobile-settings` in `src/mobile.css`.
+
+Version rule: every newly delivered iteration gets a higher visible x.y.z
+version; iOS and Android of the same iteration share it.
+`scripts/mobile-version.mjs` updates/checks npm, Cargo, Tauri, frontend identity
+and generated mobile metadata. Current iOS build: 10016, Android: 9010016.
+See `docs/MOBILE_SETTINGS.md` and `docs/MOBILE_VERSIONING.md`.
+
+Local 1.0.19 (2026-10-01, branch `ios`, unpublished):
+`mobileNavigation.ts` owns bounded DOM previews and phone history positions;
+`actions/mobileSwipeBack.ts` implements interactive left-edge back for the shell
+and full player. Settings/library sections and artist albums use this same history;
+artist-to-artist entries retain the artist name. The shell's header and content
+share `.mobile-navigation-surface`, so their geometry moves together.
+`src/mobile.css` applies restrained typography, spacing and control styles across
+the core mobile screens; mobile Search track rows now expose keyboard-operable
+play buttons. Desktop UI keeps its own paths.
+`actions/iosGlassButton.ts` bootstraps through Rust and then sends geometry via
+the direct `lomifyControls` WebKit message handler. `native/ios_controls.m` clips
+each button to its scroll pane, disables implicit geometry animation and passively
+cancels button tracking when a touch turns into scrolling. Physical held-finger
+verification is pending; WebKit flows, all three native builds and idle tests pass.
+See `docs/MOBILE_UI.md`, `docs/IOS_UIKIT.md`, and `docs/releases/v1.0.19.md`.
+
+Local 1.0.20 (2026-10-01, branch `ios`, unpublished):
+`MobileWave.svelte` places play + the configured station name in the center,
+with a compact filter toggle and a separate current-track row.
+`src/mobile.css` uses original single-hue SVG ribbons instead of the old
+multicolor hero card and perpetual drift animations. Existing collection,
+pause, cancellation, filtering, lyrics and player paths remain available on
+both mobile platforms. Source routing/backend behavior is unchanged.
+See `docs/MOBILE_WAVE.md` for reference, design decisions and UI verification.
+
+Local 1.0.21 (2026-10-01, branch `ios`, unpublished):
+`mobileWaveMotion.ts` adapts FFT sensitivity to track level and detects bass
+onsets. Two original SVG layers scale and rotate slightly on the beat, with
+bounded angles and no perpetual frame/timer loop. Mobile FFT stays at 20 Hz.
+Pause, silence, track changes and motion/visualizer preferences reset transforms.
+The same component serves iOS and Android. Tests: `scripts/mobile-wave-test.mjs`.
+Generated debug build caches were cleared on the Mac at the user’s request;
+ready IPA/APK files, source, npm dependencies and FFmpeg libraries are retained.
+See `docs/MOBILE_WAVE.md` and `docs/releases/v1.0.21.md`.
+
+Local 1.0.22 (2026-10-01, branch `ios`, unpublished):
+Dense-music regression fixed with per-band spectral onsets in `mobileWaveMotion.ts`
+and a soft mobile magnitude curve in `audio/spectrum.rs` (desktop unchanged).
+The two-minute regression improves from 2/240 to 240/240 detected kicks; WebKit
+remains reactive past 152 seconds. iOS/Android/simulator builds and native asset
+verification pass. Mac cache cleanup reports are local and excluded from Git.
+See `docs/releases/v1.0.22.md` and `docs/MOBILE_WAVE.md`.
+
+Mobile 1.0.23 (2026-10-02, branch `ios`):
+`mobile-navigation-surface` has its own opaque background. iOS artist content
+uses root scrolling through `actions/iosArtistScroll.ts`; `iosGlassButton.ts`
+sends content coordinates and `native/ios_controls.m` attaches these controls
+to public WKWebView.scrollView. UIKit owns scroll motion; fixed player controls
+stay in the overlay. Ordinary root scrolling sends no geometry messages.
+`mobilePlayerArtwork.ts` measures layout on resize; CSS composites reversible
+cover-to-lyrics zoom. Player opens as a solid bottom panel. SF Symbols use
+Regular with plain playback configurations and glass where appropriate.
+`MobileTrackMenu.svelte` now exposes an on-demand information view using
+`mobileTrackInfo.ts`; SoundCloud totals and personal Lomify counts are distinct.
+`yandex.ts` fetches one full track and preserves release year precision.
+Tests cover gestures, idle, root scrolling and missing/zero/source-specific
+metadata. Native touch/ProMotion/heat validation on iPhone remains pending.
+See `docs/UI_VIDEO_PLAN.md` and `docs/releases/v1.0.23.md`.

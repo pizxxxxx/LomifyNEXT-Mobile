@@ -183,6 +183,8 @@ pub fn start_tick_emitter(app: &AppHandle) {
             // забирает ли устройство сэмплы вообще или плеер стоит мёртвым.
             let mut awaiting_first_progress = false;
             let mut had_track = false;
+            #[cfg(any(target_os = "android", target_os = "ios"))]
+            let mut mobile_progress = super::progress_events::MobileProgressEvents::default();
 
             loop {
                 std::thread::sleep(Duration::from_millis(TICK_INTERVAL_MS));
@@ -207,6 +209,8 @@ pub fn start_tick_emitter(app: &AppHandle) {
                 process_crossfade(&state);
 
                 if !state.has_track.load(Ordering::Relaxed) {
+                    #[cfg(any(target_os = "android", target_os = "ios"))]
+                    mobile_progress.reset();
                     last_pos_ms = 0;
                     last_progress_at = std::time::Instant::now();
                     had_track = false;
@@ -265,7 +269,7 @@ pub fn start_tick_emitter(app: &AppHandle) {
                                     last_pos_ms as f64 / 1000.0
                                 ),
                             );
-                            #[cfg(target_os = "android")]
+                            #[cfg(any(target_os = "android", target_os = "ios"))]
                             if crate::audio::background::try_advance(&handle) {
                                 continue;
                             }
@@ -290,9 +294,17 @@ pub fn start_tick_emitter(app: &AppHandle) {
                         raw_ms,
                         playing,
                     } => {
-                        handle.emit("audio:tick", pos).ok();
-                        timing::process_lyrics_timeline(&handle, &state, pos);
-                        timing::process_comments_timeline(&handle, &state, pos);
+                        #[cfg(any(target_os = "android", target_os = "ios"))]
+                        let emit_progress = mobile_progress.should_emit(pos, playing);
+                        #[cfg(not(any(target_os = "android", target_os = "ios")))]
+                        let emit_progress = true;
+                        if emit_progress {
+                            handle.emit("audio:tick", pos).ok();
+                            #[cfg(target_os = "ios")]
+                            crate::ios_media::playback(playing, pos, *state.playback_rate.lock().unwrap() as f64);
+                            timing::process_lyrics_timeline(&handle, &state, pos);
+                            timing::process_comments_timeline(&handle, &state, pos);
+                        }
 
                         if awaiting_first_progress && raw_ms > 0 {
                             awaiting_first_progress = false;

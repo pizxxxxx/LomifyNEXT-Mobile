@@ -25,6 +25,7 @@ export function mobileDepth(node: HTMLElement, initial: DepthOptions) {
 
   function render() {
     frame = 0;
+    if (!panels.length) return;
     x += (targetX - x) * .18;
     y += (targetY - y) * .18;
     const settled = Math.abs(targetX - x) < .005 && Math.abs(targetY - y) < .005;
@@ -45,8 +46,12 @@ export function mobileDepth(node: HTMLElement, initial: DepthOptions) {
     const landscape = Math.abs(screen.orientation?.angle ?? 0) === 90;
     const dx = landscape ? event.beta - baseBeta : event.gamma - baseGamma;
     const dy = landscape ? event.gamma - baseGamma : event.beta - baseBeta;
-    targetX = Math.max(-1, Math.min(1, dx / 24));
-    targetY = Math.max(-1, Math.min(1, dy / 30));
+    const nextX = Math.max(-1, Math.min(1, dx / 24));
+    const nextY = Math.max(-1, Math.min(1, dy / 30));
+    // Ignore sensor jitter smaller than a tenth of a rendered pixel.
+    if (Math.abs(nextX - targetX) < .02 && Math.abs(nextY - targetY) < .02) return;
+    targetX = nextX;
+    targetY = nextY;
     if (!frame) frame = requestAnimationFrame(render);
   }
 
@@ -74,7 +79,14 @@ export function mobileDepth(node: HTMLElement, initial: DepthOptions) {
     clearPanels();
     panels = [...node.querySelectorAll<HTMLElement>('.mobile-wave-shortcut, .mobile-favorites, .mobile-profile-card, .mobile-artist-hero')]
       .filter(panel => panel.getClientRects().length > 0)
+      .filter(panel => document.body.dataset.iosScroll !== 'artist' || !panel.classList.contains('mobile-artist-hero'))
       .slice(0, 3);
+    if (!panels.length) {
+      if (listening) window.removeEventListener('deviceorientation', onOrientation);
+      listening = false;
+      resetCalibration();
+      return;
+    }
     for (const panel of panels) panel.style.setProperty('will-change', 'translate');
     resetCalibration();
     if (!listening) {
@@ -97,7 +109,11 @@ export function mobileDepth(node: HTMLElement, initial: DepthOptions) {
   scheduleSync();
 
   return {
-    update(next: DepthOptions) { options = next; scheduleSync(); },
+    update(next: DepthOptions) {
+      if (next.enabled === options.enabled && next.view === options.view) return;
+      options = next;
+      scheduleSync();
+    },
     destroy() {
       options = { ...options, enabled: false };
       if (selectionFrame) cancelAnimationFrame(selectionFrame);

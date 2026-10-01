@@ -323,10 +323,19 @@ pub fn resolve_normalization_gain(
         return Ok(gain);
     }
 
-    #[cfg(any(target_os = "android", target_os = "ios"))]
+    #[cfg(target_os = "android")]
     let gain = normalization_gain_from_samples(
         build_symphonia_decoder(bytes).map_err(|e| format!("Failed to decode: {e}"))?,
     );
+
+    #[cfg(target_os = "ios")]
+    let gain = if is_ogg_opus(bytes) {
+        normalization_gain_from_samples(crate::ios_audio::NativeSource::new(bytes)?)
+    } else if let Ok(source) = build_symphonia_decoder(bytes) {
+        normalization_gain_from_samples(source)
+    } else {
+        normalization_gain_from_samples(crate::ios_audio::NativeSource::new(bytes)?)
+    };
 
     #[cfg(not(any(target_os = "android", target_os = "ios")))]
     let gain = if is_ogg_opus(bytes) {
@@ -378,7 +387,7 @@ pub fn create_player_from_bytes(
     // `Decoder::new(..).is_ok()` and then built a second one, so every symphonia
     // track paid two full container probes and two whole-file `to_vec()` copies
     // (~2x the track size in transient allocations on every load/seek/reload).
-    #[cfg(any(target_os = "android", target_os = "ios"))]
+    #[cfg(target_os = "android")]
     let (duration_secs, decoder, sample_rate, channels) = {
         let source =
             build_symphonia_decoder(bytes).map_err(|e| format!("Failed to decode: {e}"))?;
@@ -393,6 +402,27 @@ pub fn create_player_from_bytes(
             analyser_buffer,
         ));
         about
+    };
+
+    #[cfg(target_os = "ios")]
+    let (duration_secs, decoder, sample_rate, channels) = if !is_ogg_opus(bytes) {
+        if let Ok(source) = build_symphonia_decoder(bytes) {
+            let about = (
+                source.total_duration().map(|d| d.as_secs_f64()),
+                "symphonia(ios)",
+                source.sample_rate().get(),
+                source.channels().get(),
+            );
+            player.append(AnalyserSource::new(
+                EqSource::new(GainSource::new(source, normalization_gain), eq_params),
+                analyser_buffer,
+            ));
+            about
+        } else {
+            append_ios_source(bytes, &player, normalization_gain, eq_params, analyser_buffer)?
+        }
+    } else {
+        append_ios_source(bytes, &player, normalization_gain, eq_params, analyser_buffer)?
     };
 
     #[cfg(not(any(target_os = "android", target_os = "ios")))]
@@ -447,6 +477,28 @@ pub fn create_player_from_bytes(
         sample_rate,
         channels,
     })
+}
+
+#[cfg(target_os = "ios")]
+fn append_ios_source(
+    bytes: &[u8],
+    player: &Player,
+    gain: f32,
+    eq_params: Arc<RwLock<EqParams>>,
+    analyser_buffer: Arc<AnalyserBuffer>,
+) -> Result<(Option<f64>, &'static str, u32, u16), String> {
+    let source = crate::ios_audio::NativeSource::new(bytes)?;
+    let about = (
+        source.total_duration().map(|d| d.as_secs_f64()),
+        "ffmpeg(ios)",
+        source.sample_rate().get(),
+        source.channels().get(),
+    );
+    player.append(AnalyserSource::new(
+        EqSource::new(GainSource::new(source, gain), eq_params),
+        analyser_buffer,
+    ));
+    Ok(about)
 }
 
 /// Короткая приметная строчка о байтах трека для лога: сколько их и что стоит в начале.

@@ -276,10 +276,16 @@ fn run_fft_loop(app: AppHandle, buffer: Arc<AnalyserBuffer>) {
 
         // Log-compress + normalize + smooth with previous frame.
         // Emp. normalisation: FFT magnitudes hit ~32 on full-scale music with Hann.
+        #[cfg(not(any(target_os = "android", target_os = "ios")))]
         let inv_log9 = 1.0 / 10.0_f32.ln(); // (1+9).ln()
         for i in 0..NUM_BINS {
-            let v = (bins[i] / 32.0).min(1.0);
-            let log_v = (1.0 + v * 9.0).ln() * inv_log9;
+            #[cfg(any(target_os = "android", target_os = "ios"))]
+            let log_v = super::spectrum::mobile_magnitude(bins[i]);
+            #[cfg(not(any(target_os = "android", target_os = "ios")))]
+            let log_v = {
+                let v = (bins[i] / 32.0).min(1.0);
+                (1.0 + v * 9.0).ln() * inv_log9
+            };
             bins_smooth[i] = bins_smooth[i] * 0.55 + log_v * 0.45;
             bins[i] = bins_smooth[i];
         }

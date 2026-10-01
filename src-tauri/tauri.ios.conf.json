@@ -1,0 +1,9 @@
+{
+  "identifier": "io.github.pizxxxxx.lomifynext.mobile",
+  "bundle": {
+    "resources": {
+      "licenses/FFmpeg-LGPL-2.1.txt": "licenses/FFmpeg-LGPL-2.1.txt",
+      "../docs/IOS_FFMPEG.md": "licenses/IOS_FFMPEG.md"
+    }
+  }
+}

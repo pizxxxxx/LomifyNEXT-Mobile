@@ -1,10 +1,16 @@
 <script lang="ts">
   import { onMount } from 'svelte';
+  import { isIOS } from '$lib/mobile';
+  import { invoke } from '@tauri-apps/api/core';
+  import { listen } from '@tauri-apps/api/event';
   import { Home, Search as SearchIcon, Library as LibraryIcon, Settings as SettingsIcon, ArrowLeft, Music2, RefreshCw, Heart, Radio, ArrowUpRight, Download, MoreHorizontal } from 'lucide-svelte';
-  import { currentView, currentTrack, isPlaying, queue, likedTracks, settings, notify } from '$lib/stores';
+  import { currentView, currentArtist, currentTrack, isPlaying, queue, likedTracks, settings, notify } from '$lib/stores';
   import { checkMobileUpdate, mobileUpdateState, openMobileUpdate } from '$lib/mobileUpdates';
   import { mobileReveal } from '$lib/actions/mobileReveal';
+  import { mobileSwipeBack } from '$lib/actions/mobileSwipeBack';
+  import { initializeMobileNavigation, pushMobileHistory, mobileCanGoBack } from '$lib/mobileNavigation';
   import { afterMobilePaint } from '$lib/utils/mobilePaint';
+  import { hasIOSOverlayChange } from '$lib/utils/iosOverlayChanges';
   import { mobileHold } from '$lib/actions/mobileHold';
   import { mobileDepth } from '$lib/actions/mobileDepth';
   import { mobileTrackKey, mobileTrackMenu, openMobileTrackMenu, stopScWave } from '$lib/mobileTracks';
@@ -32,20 +38,75 @@
     { id: 'settings', label: 'Настройки', icon: SettingsIcon }
   ] as const;
   let main: HTMLElement;
+  let shell: HTMLElement;
   let visited = $state<string[]>(['home']);
   let readyView = $state<string>('home');
   let keyboardInput = $state(false);
+  let nativeNavigationEnabled = $state(false);
+  let nativeNavigationReady = $state(false);
+  let nativeNavigationVisible = $state(true);
+  let nativeUpdates: Promise<unknown> = Promise.resolve();
   let cancelMount = () => {};
+  function nativeTint(): number[] {
+    const context = document.createElement('canvas').getContext('2d');
+    if (!context) return [1, .533, .302];
+    context.fillStyle = '#ff884d';
+    context.fillStyle = getComputedStyle(document.body).getPropertyValue('--mobile-accent');
+    context.fillRect(0, 0, 1, 1);
+    return [...context.getImageData(0, 0, 1, 1).data].slice(0, 3).map(value => value / 255);
+  }
+  $effect(() => {
+    if (!isIOS || !nativeNavigationEnabled) return;
+    // Resolve the same accent as the WebView after theme changes.
+    $settings.theme;
+    const index = Math.max(0, tabs.findIndex(tab => tab.id === $currentView));
+    const visible = nativeNavigationVisible && !$mobileTrackMenu;
+    const tint = nativeTint();
+    nativeUpdates = nativeUpdates.then(() => invoke<boolean>('ios_navigation_update', { index, visible, tint }))
+      .then(ready => { if (ready) nativeNavigationReady = true; })
+      .catch(error => console.warn('[iOS navigation]', error));
+  });
   function navigate(view: typeof $currentView) {
     if (view === $currentView) return;
     currentView.set(view);
   }
   onMount(() => {
+    let disposed = false;
+    let nativeUnlisten = () => {};
+    let nativeObserver: MutationObserver | undefined;
+    let visibilityFrame = 0;
+    const updateNativeVisibility = () => {
+      const expanded = document.querySelector('.mobile-player.expanded:not([inert])');
+      const dialog = [...document.querySelectorAll<HTMLElement>('[aria-modal="true"], dialog[open]')].some(node => node.getClientRects().length > 0);
+      const active = document.activeElement;
+      const editing = active instanceof HTMLTextAreaElement || active instanceof HTMLInputElement && /^(text|search|email|url|password|number|tel)$/.test(active.type);
+      nativeNavigationVisible = !expanded && !dialog && !editing;
+    };
+    const scheduleNativeVisibility = () => {
+      if (!visibilityFrame) visibilityFrame = requestAnimationFrame(() => {
+        visibilityFrame = 0;
+        updateNativeVisibility();
+      });
+    };
+    if (isIOS) {
+      nativeObserver = new MutationObserver(records => { if (hasIOSOverlayChange(records)) scheduleNativeVisibility(); });
+      nativeObserver.observe(document.body, { subtree: true, childList: true, attributes: true, attributeFilter: ['class', 'inert', 'hidden', 'open', 'aria-modal'] });
+      document.addEventListener('focusin', updateNativeVisibility);
+      document.addEventListener('focusout', updateNativeVisibility);
+      updateNativeVisibility();
+      void listen<string>('ios:navigation', event => {
+        const tab = tabs.find(tab => tab.id === event.payload);
+        if (tab) navigate(tab.id);
+      }).then(release => {
+        if (disposed) release();
+        else { nativeUnlisten = release; nativeNavigationEnabled = true; }
+      }).catch(error => console.warn('[iOS navigation]', error));
+    }
     void checkMobileUpdate();
     const checkOnResume = () => { if (!document.hidden) void checkMobileUpdate(); };
     document.addEventListener('visibilitychange', checkOnResume);
     currentView.set('home');
-    history.replaceState({ mobileView: 'home' }, '');
+    const releaseHistory = initializeMobileNavigation(shell);
     let restoring = false;
     let previous = $currentView;
     const release = currentView.subscribe(view => {
@@ -60,10 +121,11 @@
       }
       if (view === previous) return;
       previous = view;
-      if (!restoring) history.pushState({ mobileView: view }, '');
+      if (!restoring) pushMobileHistory({ mobileView: view, ...(view === 'artist' ? { mobileArtist: $currentArtist } : {}) });
     });
     const back = (e: PopStateEvent) => {
       restoring = true;
+      if (e.state?.mobileArtist) currentArtist.set(e.state.mobileArtist);
       currentView.set(e.state?.mobileView || 'home');
       restoring = false;
     };
@@ -74,15 +136,24 @@
         mobileTrackMenu.set(null);
         return;
       }
-      if (history.state?.mobilePlayer || $currentView !== 'home') {
+      if (history.state?.mobilePlayer || $mobileCanGoBack) {
         event.preventDefault();
         history.back();
       }
     };
     window.addEventListener('lomify:android-back', androidBack);
     return () => {
+      disposed = true;
+      nativeNavigationEnabled = false;
+      nativeUnlisten();
+      nativeObserver?.disconnect();
+      cancelAnimationFrame(visibilityFrame);
+      document.removeEventListener('focusin', updateNativeVisibility);
+      document.removeEventListener('focusout', updateNativeVisibility);
+      if (nativeNavigationReady) void invoke('ios_navigation_update', { index: 0, visible: false, tint: [1, .533, .302] }).catch(console.warn);
       document.removeEventListener('visibilitychange', checkOnResume);
       release();
+      releaseHistory();
       cancelMount();
       window.removeEventListener('popstate', back);
       window.removeEventListener('lomify:android-back', androidBack);
@@ -104,7 +175,9 @@
 {/snippet}
 
 <svelte:window onpointerdown={() => keyboardInput = false} onkeydown={() => keyboardInput = true} />
-<div class="mobile-app" data-input={keyboardInput ? 'keyboard' : 'pointer'} data-view={$currentView} use:mobileDepth={{ enabled: $settings.mobileDepthMotion === true && $settings.mobileMotion !== false, view: $currentView }} data-motion={$settings.mobileMotion === false ? 'off' : 'on'} data-blur={$settings.mobileBlur ? 'on' : 'off'} data-text-size={$settings.mobileTextSize} data-text-weight={$settings.mobileTextWeight}>
+<div bind:this={shell} class="mobile-app" data-input={keyboardInput ? 'keyboard' : 'pointer'} data-view={$currentView} use:mobileDepth={{ enabled: $settings.mobileDepthMotion === true && $settings.mobileMotion !== false, view: $currentView }} data-motion={$settings.mobileMotion === false ? 'off' : 'on'} data-blur={$settings.mobileBlur ? 'on' : 'off'} data-text-size={$settings.mobileTextSize} data-text-weight={$settings.mobileTextWeight}>
+  <div class="mobile-navigation-stage" use:mobileSwipeBack>
+  <div class="mobile-navigation-surface" data-view={$currentView}>
   <header class="mobile-header">
     {#if !tabs.some(t => t.id === $currentView)}
       <button class="mobile-icon-button" aria-label="Назад" onclick={() => history.back()}><ArrowLeft size={24} /></button>
@@ -112,7 +185,6 @@
       <img src="/mobile-icon.png" alt="" width="32" height="32" />
     {/if}
     <span>Lomify<span class="mobile-brand-accent">NEXT</span></span>
-    <span class="mobile-edition">MOBILE</span>
   </header>
   <main bind:this={main} class="mobile-content" class:has-track={!!$currentTrack} aria-busy={readyView !== $currentView} tabindex="-1">
     <div class="mobile-pane" hidden={$currentView !== 'home'} use:mobileReveal={$currentView === 'home'}>
@@ -127,7 +199,7 @@
         {/if}
         <button class="mobile-search-shortcut" onclick={() => navigate('search')}><SearchIcon size={22} /><span>Трек, исполнитель или альбом</span></button>
         <button class="mobile-wave-shortcut" class:is-soundcloud={$settings.searchSource !== 'yandex'} onclick={() => navigate('wave')}>
-          <span class="mobile-wave-shortcut-icon"><Radio size={30} strokeWidth={1.4} /></span><span><small>{$settings.searchSource === 'yandex' ? 'ЯНДЕКС МУЗЫКА' : 'SOUNDCLOUD'}</small><strong>{$settings.mobileWaveName === 'wave' ? 'Моя Волна' : 'Моя Тусня'}</strong><span>{$settings.searchSource === 'yandex' ? 'Музыка на твоей частоте' : 'Поток из любимых треков'}</span></span><ArrowUpRight size={22} />
+          <span class="mobile-wave-shortcut-icon"><Radio size={30} strokeWidth={1.4} /></span><span><small>{$settings.searchSource === 'yandex' ? 'Яндекс Музыка' : 'SoundCloud'}</small><strong>{$settings.mobileWaveName === 'wave' ? 'Моя Волна' : 'Моя Тусня'}</strong><span>{$settings.searchSource === 'yandex' ? 'Музыка на твоей частоте' : 'Поток из любимых треков'}</span></span><ArrowUpRight size={22} />
         </button>
         <button class="mobile-favorites" onclick={() => navigate('library')}>
           <span class="mobile-favorites-icon"><Heart size={26} /></span>
@@ -146,12 +218,12 @@
               <div class="mobile-album">
                 <button class="mobile-album-play" use:mobileHold={{ onHold: () => openMobileTrackMenu(track) }} onclick={() => play(track)} aria-label={`Слушать ${track.title}, ${track.artist}. Удерживай для меню`}>
                   <span class="mobile-album-art"><Music2 size={40} />{#if track.coverUrl}<img src={coverUrlAtSize(coverUrlForTrack(track, $downloadedCoverCache), 300)} alt="" loading="lazy" decoding="async" onerror={(event) => handleArtworkError(event, track.coverUrl, 300)} onload={handleArtworkLoad} />{/if}</span>
+                  <strong>{track.title}</strong>
                 </button>
                 <div class="mobile-album-caption">
-                  <button class="mobile-album-title" onclick={() => play(track)}><strong>{track.title}</strong></button>
+                  <div class="mobile-album-artist"><ArtistTag artist={track.artist} artists={track.artists} /></div>
                   <button class="mobile-icon-button mobile-album-menu" aria-label={`Меню трека ${track.title}`} onclick={() => openMobileTrackMenu(track)}><MoreHorizontal size={21} aria-hidden="true" /></button>
                 </div>
-                <div class="mobile-album-artist"><ArtistTag artist={track.artist} artists={track.artists} /></div>
               </div>
             {/each}
           </div>
@@ -178,13 +250,17 @@
       </div>
     {/if}
   </main>
+  </div>
+  </div>
   <Player mobile />
+  {#if !nativeNavigationReady}
   <nav class="mobile-nav" aria-label="Основные разделы">
     <span class="mobile-nav-indicator" aria-hidden="true" style:transform={`translateX(${Math.max(0, tabs.findIndex(tab => tab.id === $currentView)) * 100}%)`} style:opacity={tabs.some(tab => tab.id === $currentView) ? 1 : 0}></span>
     {#each tabs as tab}
       <button class:active={$currentView === tab.id} aria-current={$currentView === tab.id ? 'page' : undefined} onclick={() => navigate(tab.id)}><tab.icon size={23} aria-hidden="true" /><span>{tab.label}</span></button>
     {/each}
   </nav>
+  {/if}
   <Notifications />
   <MobileTrackMenu />
 </div>

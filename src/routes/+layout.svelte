@@ -4,6 +4,7 @@
   import '../mobile.css';
   import { isMobile } from '$lib/mobile';
   import { settings, initStore, currentTrack, effectivePerformanceMode } from '$lib/stores';
+  import { waitForStoreStorage } from '$lib/storePersistence';
   import Titlebar from '$lib/components/Titlebar.svelte';
   import { onMount } from 'svelte';
   import { ArrowRight, Check, Sparkles, X } from 'lucide-svelte';
@@ -108,7 +109,8 @@
   function syncAllLikesAtStartup() {
     lastLikesSyncAt = Date.now();
     lastLikesSyncToken = $settings.yandexToken || '';
-    import('$lib/likes').then(({ syncLikes }) => {
+    import('$lib/likes').then(async ({ syncLikes }) => {
+      await waitForStoreStorage();
       syncLikes({ silent: true }).catch((e) => console.warn('[likes] сверка сорвалась', e));
     });
   }

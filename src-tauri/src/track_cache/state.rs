@@ -574,7 +574,7 @@ pub struct TrackCacheState {
     /// Managed ffmpeg binary, populated asynchronously at startup (system PATH
     /// or download). Shared so the background acquire is visible to all clones.
     /// `None` disables transcoding (cache then serves raw bytes from `incoming_dir`).
-    ffmpeg: Arc<StdMutex<Option<PathBuf>>>,
+    ffmpeg: Arc<StdMutex<Option<transcode::Backend>>>,
     /// Set once the startup ffmpeg acquisition finishes (success or not), so the
     /// UI can distinguish "still preparing" from "gave up / unavailable".
     ffmpeg_probe_done: Arc<std::sync::atomic::AtomicBool>,
@@ -1044,7 +1044,7 @@ impl TrackCacheState {
 
     /// Current ffmpeg path, or `None` while it is still being acquired / when
     /// acquisition failed (transcoding disabled, raw bytes served instead).
-    fn ffmpeg(&self) -> Option<PathBuf> {
+    fn ffmpeg(&self) -> Option<transcode::Backend> {
         self.ffmpeg.lock().ok().and_then(|g| g.clone())
     }
 
@@ -1053,7 +1053,7 @@ impl TrackCacheState {
     pub async fn init_ffmpeg(&self, install_dir: PathBuf) {
         match transcode::acquire_ffmpeg(&install_dir).await {
             Some(path) => {
-                let line = format!("[TrackCache] ffmpeg ready: {}", path.display());
+                let line = format!("[TrackCache] ffmpeg ready: {}", transcode::backend_label(&path));
                 println!("{line}");
                 self.diag("INFO", line);
                 if let Ok(mut slot) = self.ffmpeg.lock() {
@@ -1352,7 +1352,7 @@ impl TrackCacheState {
     /// Transcode `incoming_dir/<urn>` → clean m4a in the routed dest dir, then
     /// drop the raw file. Validates the result against the API duration and
     /// discards truncated downloads. Caller owns the `transcoding` dedup slot.
-    async fn run_transcode(&self, ffmpeg: &Path, urn: &str) -> Result<(), String> {
+    async fn run_transcode(&self, ffmpeg: &transcode::Backend, urn: &str) -> Result<(), String> {
         let _permit = self
             .transcode_limiter
             .acquire()
@@ -1497,7 +1497,7 @@ impl TrackCacheState {
     /// Ensure a clean m4a exists for export, coalescing with any background
     /// transcode via the shared dedup set. Returns the clean path, or `None` if
     /// no clean file could be produced (caller falls back to the raw bytes).
-    async fn ensure_clean_for_export(&self, urn: &str, ffmpeg: &Path) -> Option<PathBuf> {
+    async fn ensure_clean_for_export(&self, urn: &str, ffmpeg: &transcode::Backend) -> Option<PathBuf> {
         if let Some(path) = self.resolve_clean_path(urn) {
             return Some(path);
         }

@@ -1,4 +1,6 @@
 pub mod analyser;
+#[cfg(any(target_os = "android", target_os = "ios"))]
+mod spectrum;
 pub mod background;
 pub mod commands;
 pub(crate) mod decode;
@@ -6,6 +8,8 @@ mod device;
 pub(crate) mod engine;
 mod eq;
 mod prefetch;
+#[cfg(any(target_os = "android", target_os = "ios"))]
+mod progress_events;
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 mod media_controls;
 pub(crate) mod state;

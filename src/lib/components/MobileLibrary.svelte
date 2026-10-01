@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { pushMobileHistory } from '$lib/mobileNavigation';
   import PlaylistSyncControl from './PlaylistSyncControl.svelte';
   import { onMount } from 'svelte';
   import { slide } from 'svelte/transition';
@@ -57,7 +58,7 @@
   let canDownloadAll = $derived(tracks.some((track: any) => !$downloadedCoverCache.cachedUrns.has(buildTrackUrn(track))));
   // The list can contain hundreds of liked tracks. Keep only the viewport plus
   // a generous buffer in the DOM; the full array still backs queue playback.
-  const ROW_HEIGHT = 88;
+  const ROW_HEIGHT = 72;
   const OVERSCAN = 6;
   let listElement = $state<HTMLElement | null>(null);
   let libraryRoot: HTMLElement;
@@ -136,7 +137,7 @@
     undoOrder = null;
   }
   function openSection(next: LibrarySection, id: string | null = null) {
-    history.pushState({ mobileView: 'library', mobileLibrarySection: next, mobilePlaylistId: id }, '');
+    pushMobileHistory({ mobileView: 'library', mobileLibrarySection: next, mobilePlaylistId: id });
     section = next;
     playlistId = next === 'playlist' ? id : null;
     undoPlaylistId = null;
@@ -290,7 +291,7 @@
       ? 0 : enter ? 180 : 120;
   }
 </script>
-<section class="mobile-library" bind:this={libraryRoot} use:mobileReveal={section}>
+<section class="mobile-library" style:--mobile-track-row-height={`${ROW_HEIGHT}px`} bind:this={libraryRoot} use:mobileReveal={section}>
   {#if section === 'overview' || section === 'playlists' || section === 'artists'}
     {#if section !== 'overview'}<button class="mobile-library-back" onclick={backToOverview}><ArrowLeft size={20} aria-hidden="true" /> Медиатека</button>{/if}
     <div class="mobile-library-page-heading"><h1>{section === 'artists' ? 'Исполнители' : section === 'playlists' ? 'Плейлисты' : 'Медиатека'}</h1><div class="mobile-library-heading-tools">{#if section !== 'artists'}<button class="mobile-icon-button mobile-glass-button" aria-label="Создать плейлист" aria-expanded={creating} onclick={() => creating = !creating}><Plus size={23} aria-hidden="true" /></button>{/if}<button class="mobile-icon-button mobile-glass-button" aria-label="Открыть настройки" onclick={() => currentView.set('settings')}><SettingsIcon size={22} aria-hidden="true" /></button></div></div>

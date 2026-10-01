@@ -9,6 +9,7 @@ import { vitePreprocess } from "@sveltejs/vite-plugin-svelte";
 const config = {
   preprocess: vitePreprocess(),
   kit: {
+    env: { dir: process.env.LOMIFY_ENV_DIR || "." },
     adapter: adapter({
       fallback: "index.html",
     }),

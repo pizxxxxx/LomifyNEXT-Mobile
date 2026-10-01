@@ -25,7 +25,8 @@ function excluded(provider: Provider, accountId: string, remoteId: string): bool
 }
 function rememberRemoval(link: PlaylistLink) {
   const key = [link.provider, link.accountId, link.remoteId].join(':');
-  localStorage.setItem(EXCLUDED, JSON.stringify([...new Set([...exclusions(), key])]));
+  try { localStorage.setItem(EXCLUDED, JSON.stringify([...new Set([...exclusions(), key])])); }
+  catch { console.warn('[playlists] Не удалось сохранить исключение импорта.'); }
 }
 function status(provider: Provider, changes: Partial<Status>) {
   playlistSyncStatus.update(value => ({ ...value, [provider]: { ...value[provider], ...changes } }));

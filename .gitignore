@@ -8,9 +8,17 @@ target/
 *.log
 .env
 .env.local
+.env.*
+.DS_Store
+# Personal Mac cleanup reports stay local.
+docs/MAC_APPS.md
+docs/MAC_STORAGE.md
 src-tauri/gen/schemas/
 src-tauri/gen/android/app/src/main/jniLibs/
 *.apk
 *.aab
 *.apk.idsig
+*.ipa
+*.xcarchive/
+src-tauri/gen/apple/build/
 LomifyNEXT-iOS-source.zip

@@ -1,5 +1,7 @@
 import { get } from 'svelte/store';
 import { currentArtist, currentView, previousView } from '$lib/stores';
+import { isMobile } from '$lib/mobile';
+import { pushMobileHistory } from '$lib/mobileNavigation';
 
 /**
  * Open an author's page.
@@ -14,12 +16,15 @@ export function goToArtist(artist: string | null | undefined) {
   const name = (artist || '').trim();
   if (!name) return;
 
+  const view = get(currentView);
+  if (isMobile && view === 'artist' && get(currentArtist) !== name) {
+    pushMobileHistory({ ...history.state, mobileView: 'artist', mobileArtist: name, mobileArtistAlbum: undefined });
+  }
   currentArtist.set(name);
 
   // `fullscreen` is an overlay over the current window, not a window of its own. It must
   // never become the "previous" view, or Back / Exit would drop the user straight back
   // into fullscreen mode instead of the page they came from.
-  const view = get(currentView);
   if (view === 'fullscreen') {
     if (get(previousView) === 'fullscreen') previousView.set('home');
   } else {

@@ -3,7 +3,8 @@
   import { invoke } from '@tauri-apps/api/core';
   import { listen } from '@tauri-apps/api/event';
   import { readFftInto, FFT_BINS } from '$lib/fft';
-  import { Play, Pause, Radio, SlidersHorizontal, ChevronRight, RefreshCw, ArrowUpRight, Loader2, Music2 } from 'lucide-svelte';
+  import { MobileWaveMotion } from '$lib/mobileWaveMotion';
+  import { ArrowLeft, SlidersHorizontal, ChevronDown, RefreshCw, ArrowUpRight, Loader2, Music2 } from 'lucide-svelte';
   import { settings, currentTrack, currentView, isPlaying, progress, lyricsStatus } from '$lib/stores';
   import { getLyrics } from '$lib/api';
   import { handleArtworkError, handleArtworkLoad } from '$lib/offlineCovers';
@@ -24,11 +25,19 @@
   let controller: AbortController | null = null;
   let timeout: ReturnType<typeof setTimeout> | undefined;
   const source = $derived($settings.searchSource === 'yandex' ? 'yandex' : 'soundcloud');
-  const waveName = $derived($settings.mobileWaveName === 'wave' ? 'Моя Волна' : 'Моя Тусня');
+  const waveName = $derived($settings.mobileWaveName === 'wave' ? 'Моя волна' : 'Моя тусня');
   const waveObject = $derived($settings.mobileWaveName === 'wave' ? 'мою волну' : 'мою тусню');
   const active = $derived(source === 'soundcloud' ? ($scWaveActive && isScWaveTrack($currentTrack)) : ($waveActive && !!$currentTrack?.waveBatchId));
   const playing = $derived(active && $isPlaying);
   const filters = $derived(describeWaveFilters($settings));
+  const canListen = $derived(source === 'soundcloud' || !!$settings.yandexToken);
+  // Original line geometry, computed once. Music only changes the layer transforms.
+  const ribbons = Array.from({ length: 9 }, (_, index) => Array.from({ length: 121 }, (_, point) => {
+    const angle = point / 120 * Math.PI * 2;
+    const x = 300 + (226 + index * 3) * Math.cos(angle);
+    const y = 230 + (141 + index * 2) * Math.sin(angle) + 18 * Math.sin(angle * 3 + index * .12) + 10 * Math.cos(angle * 2);
+    return `${point ? 'L' : 'M'}${x.toFixed(1)},${y.toFixed(1)}`;
+  }).join(' ') + 'Z');
   let visual: HTMLElement;
   let pageHidden = $state(false);
   let reduceMotion = $state(false);
@@ -36,17 +45,24 @@
   let voiceGlow: HTMLSpanElement;
   let unlistenFft: (() => void) | null = null;
   const fft = new Float32Array(FFT_BINS);
+  const waveMotion = new MobileWaveMotion();
   let lastFftAt = 0;
+  function resetWaveMotion() {
+    waveMotion.reset();
+    lastFftAt = 0;
+    if (!bassGlow || !voiceGlow) return;
+    for (const layer of [bassGlow, voiceGlow]) {
+      layer.style.scale = '1';
+      layer.style.rotate = '0deg';
+      layer.style.opacity = '';
+    }
+  }
   $effect(() => {
     const enabled = $settings.mobileVisualizer !== false && $settings.mobileMotion !== false && !reduceMotion && playing && !pageHidden;
     void invoke('audio_visualizer_set_enabled', { enabled }).catch(() => {});
-    if (!enabled && bassGlow) {
-      bassGlow.style.scale = '1';
-      voiceGlow.style.scale = '1';
-      bassGlow.style.opacity = '';
-      voiceGlow.style.opacity = '';
-    }
+    if (!enabled) resetWaveMotion();
   });
+  $effect(() => { $currentTrack?.id; resetWaveMotion(); });
   let lyricLine = $state('');
   let lyricTimeline: { time: number; text: string }[] = [];
   let lyricGeneration = 0;
@@ -75,22 +91,20 @@
     syncVisualizerVisibility();
     syncMotionPreference();
     void listen<number[]>('audio:fft', event => {
-        if (!visual || pageHidden || reduceMotion || !playing || !$settings.mobileVisualizer || !$settings.mobileMotion) return;
+        if (!visual || pageHidden || reduceMotion || !playing || $settings.mobileVisualizer === false || $settings.mobileMotion === false) return;
         const now = performance.now();
         if (now - lastFftAt < 45) return;
         if (!readFftInto(event.payload, fft)) return;
         lastFftAt = now;
-        let bassSum = 0;
-        let voiceSum = 0;
-        for (let i = 0; i < 9; i++) bassSum += fft[i];
-        for (let i = 9; i < 32; i++) voiceSum += fft[i];
-        const bass = bassSum / 9;
-        const voice = voiceSum / 23;
-        // Only compositor-friendly scale and opacity change with the music.
-        bassGlow.style.scale = (1 + bass * .065).toFixed(3);
-        voiceGlow.style.scale = (1 + voice * .045).toFixed(3);
-        bassGlow.style.opacity = Math.min(.96, .72 + bass * .28).toFixed(3);
-        voiceGlow.style.opacity = Math.min(.85, .58 + voice * .3).toFixed(3);
+        const motion = waveMotion.update(fft, now);
+        // Two existing SVG layers: no path rebuild, layout reads or idle frame loop.
+        const pulse = motion.bass * .085 + motion.beat * .035;
+        bassGlow.style.scale = `${(1 + pulse).toFixed(3)} ${(1 + pulse * 1.15).toFixed(3)}`;
+        voiceGlow.style.scale = (1 + motion.body * .06 + motion.beat * .018).toFixed(3);
+        bassGlow.style.rotate = `${motion.rotation.toFixed(2)}deg`;
+        voiceGlow.style.rotate = `${motion.lightRotation.toFixed(2)}deg`;
+        bassGlow.style.opacity = (.6 + motion.bass * .24 + motion.beat * .06).toFixed(3);
+        voiceGlow.style.opacity = (.45 + motion.body * .27).toFixed(3);
       }).then(stop => { if (disposed) stop(); else unlistenFft = stop; }).catch(() => {});
     const unsubscribeProgress = progress.subscribe(position => {
       if (!lyricTimeline.length || !$settings.mobileWaveLyrics) return;
@@ -156,50 +170,52 @@
   onDestroy(() => { controller?.abort(); clearTimeout(timeout); });
 </script>
 
-<section class="mobile-wave-page" class:is-soundcloud={source === 'soundcloud'}>
-  <div class="mobile-wave-intro">
-    <div class="mobile-wave-kicker"><MusicServiceIcon service={source} size={19} /><span>{source === 'soundcloud' ? 'SOUNDCLOUD' : 'ЯНДЕКС МУЗЫКА'}</span></div>
-    <h1>{waveName}</h1>
+<section class="mobile-wave-page">
+  <div class="mobile-wave-toolbar">
+    <button class="mobile-icon-button" aria-label="Назад" onclick={() => history.back()}><ArrowLeft size={22} /></button>
+    <span><MusicServiceIcon service={source} size={19} />{source === 'soundcloud' ? 'SoundCloud' : 'Яндекс Музыка'}</span>
   </div>
-  <div class="mobile-wave-hero">
-    <div bind:this={visual} class="mobile-wave-glow-field" class:playing={playing && !pageHidden && !reduceMotion && $settings.mobileMotion !== false && $settings.mobileVisualizer !== false} aria-hidden="true">
-      <span bind:this={bassGlow} class="mobile-wave-glow glow-warm"></span>
-      <span bind:this={voiceGlow} class="mobile-wave-glow glow-deep"></span>
+  <div class="mobile-wave-stage">
+    <div bind:this={visual} class="mobile-wave-ribbons" aria-hidden="true">
+      <span bind:this={bassGlow} class="mobile-wave-ribbon-layer">
+        <svg viewBox="0 0 600 460" fill="none" focusable="false"><path d={ribbons[4]} stroke-width="14" opacity=".07" />{#each ribbons as path, index}<path d={path} stroke-width={index === 4 ? 2 : 1} opacity={.25 + (4 - Math.abs(index - 4)) * .12} />{/each}</svg>
+      </span>
+      <span bind:this={voiceGlow} class="mobile-wave-ribbon-layer mobile-wave-ribbon-light">
+        <svg viewBox="0 0 600 460" fill="none" focusable="false"><path d={ribbons[2]} stroke-width="1.2" /><path d={ribbons[6]} stroke-width="1.2" /></svg>
+      </span>
     </div>
-    <div class="mobile-wave-hero-content">
-      <span class="mobile-wave-now-label">{active ? 'СЕЙЧАС В ПОТОКЕ' : 'НА ТВОЕЙ ЧАСТОТЕ'}</span>
-      <div class="mobile-wave-track" aria-live="polite">
-        {#if active && $currentTrack}<h2>{$currentTrack.title}</h2><p>{$currentTrack.artist}</p>
-        {:else}<h2>Музыка под твой момент</h2><p>{source === 'soundcloud' ? 'Из любимых треков SoundCloud' : $settings.yandexToken ? 'Персональный поток из Яндекс Музыки' : 'Подключи Яндекс и включай'}</p>{/if}
-      </div>
-      <div class="mobile-wave-art" aria-hidden="true"><span class="mobile-wave-core"><Radio size={40} strokeWidth={1.3} />{#if active && $currentTrack?.coverUrl}<img src={$currentTrack.coverUrl} alt="" onerror={(event) => handleArtworkError(event, $currentTrack.coverUrl)} onload={handleArtworkLoad} />{/if}</span></div>
+    <div class="mobile-wave-center">
+      <h1 class="mobile-wave-title"><button class="mobile-wave-start" onclick={canListen ? primary : connect} aria-label={!canListen ? 'Подключить Яндекс Музыку' : busy ? `Отменить загрузку: ${waveName}` : playing ? `Приостановить ${waveObject}` : `Слушать ${waveObject}`}>
+        {#if busy}<Loader2 size={30} class="animate-spin" />{:else}<MorphIcon icon={playing ? PauseData : PlayData} size={30} fill="currentColor" spring="snappy" reducedMotion="user" />{/if}
+        <span>{waveName}</span>
+      </button></h1>
+      {#if canListen}<button class="mobile-wave-tune-button" aria-expanded={tuning} aria-controls="mobile-wave-filters" onclick={() => tuning = !tuning}><SlidersHorizontal size={16} />Настроить<ChevronDown size={15} class={tuning ? 'turned' : ''} /></button>
+      {:else}<button class="mobile-wave-tune-button" onclick={connect}>Подключить Яндекс<ArrowUpRight size={16} /></button>{/if}
+      {#if busy}<p class="mobile-wave-status" role="status">Собираем музыку… Нажми, чтобы отменить.</p>{:else if filters && canListen}<p class="mobile-wave-status">{filters}</p>{/if}
     </div>
   </div>
-  {#if active && lyricLine && $settings.mobileWaveLyrics}<button class="mobile-wave-lyric" onclick={() => window.dispatchEvent(new Event('lomify:open-player'))} aria-label="Открыть текст песни в плеере">{lyricLine}</button>{/if}
-  {#if source === 'soundcloud' || $settings.yandexToken}
-    <button class="mobile-primary mobile-wave-play" onclick={primary} aria-label={busy ? `Отменить загрузку: ${waveName}` : playing ? `Приостановить ${waveObject}` : `Слушать ${waveObject}`}>
-      {#if busy}<Loader2 size={22} class="animate-spin" />{:else}<MorphIcon icon={playing ? PauseData : PlayData} size={22} fill="currentColor" spring="snappy" reducedMotion="user" />{/if}
-      {busy ? 'Отменить загрузку' : playing ? 'Пауза' : active ? 'Продолжить' : `Слушать ${waveObject}`}
-    </button>
-    {#if busy}<p class="mobile-wave-status" role="status">Собираем музыку{filters ? ' по выбранным фильтрам' : ' для тебя'}…</p>{/if}
-    {#if active}<div class="mobile-wave-actions"><button class="mobile-text-button" disabled={busy} onclick={collect}><RefreshCw size={17} /> Собрать заново</button><button class="mobile-text-button" onclick={() => window.dispatchEvent(new Event('lomify:open-player'))}>Плеер <ArrowUpRight size={17} /></button></div>{/if}
-  {:else}
-    <button class="mobile-primary mobile-wave-play" onclick={connect}>Подключить Яндекс <ArrowUpRight size={20} /></button>
-    <p class="mobile-wave-status">Пошаговая инструкция откроется в настройках.<br />Для полного прослушивания нужна подписка Плюс.</p>
-  {/if}
+  {#if !canListen}<p class="mobile-wave-status">Для прослушивания подключи аккаунт с подпиской Плюс.<br />Инструкция откроется в настройках.</p>{/if}
   {#if error}<p class="mobile-error" role="alert">{error}</p>{/if}
-  {#if source === 'soundcloud' || $settings.yandexToken}
-    <details class="mobile-wave-tuning" bind:open={tuning}>
-      <summary><SlidersHorizontal size={20} /><span><strong>Настроить {waveObject}</strong><small>{filters || 'Любой жанр и язык'}</small></span><ChevronRight size={20} class="mobile-disclosure-arrow" /></summary>
+  {#if canListen}
+    <div class="mobile-wave-tuning" id="mobile-wave-filters" hidden={!tuning}>
       <div class="mobile-wave-filter-content">
-        <fieldset disabled={busy}><legend>Настроение жанра</legend><div class="mobile-wave-chips"><button aria-pressed={!genre} onclick={() => genre = ''}>Любой</button>{#each WAVE_GENRES as option}<button aria-pressed={genre === option.id} onclick={() => genre = option.id}>{option.label}</button>{/each}</div></fieldset>
+        <fieldset disabled={busy}><legend>Жанр</legend><div class="mobile-wave-chips"><button aria-pressed={!genre} onclick={() => genre = ''}>Любой</button>{#each WAVE_GENRES as option}<button aria-pressed={genre === option.id} onclick={() => genre = option.id}>{option.label}</button>{/each}</div></fieldset>
         {#if source !== 'soundcloud'}<fieldset disabled={busy}><legend>Язык</legend><div class="mobile-wave-chips">{#each WAVE_LANGUAGES as option}<button aria-pressed={language === option.id} onclick={() => language = option.id}>{option.label}</button>{/each}</div></fieldset>
         <fieldset disabled={busy}><legend>Вокал</legend><div class="mobile-wave-chips">{#each [{id:'all', label:'Любой'}, {id:'lyrics', label:'С текстом'}, {id:'instrumental', label:'Без слов'}] as option}<button aria-pressed={content === option.id} onclick={() => content = option.id}>{option.label}</button>{/each}</div></fieldset>{/if}
         <p class="mobile-hint">Условия применятся после нажатия кнопки. С узкими фильтрами подбор может занять больше времени.</p>
         <button class="mobile-primary" disabled={busy} onclick={applyFilters}><Music2 size={18} /> Применить и слушать</button>
         <button class="mobile-text-button" disabled={busy} onclick={() => { language = ''; genre = ''; content = 'all'; }}>Сбросить выбор</button>
       </div>
-    </details>
-    <p class="mobile-wave-footer">{source === 'soundcloud' ? 'Подбор идёт по твоим любимым SoundCloud и рекомендациям. Музыка продолжится в других разделах.' : 'Дослушивания и пропуски помогают Яндексу подбирать следующие треки. Музыка продолжится в других разделах.'}</p>
+    </div>
+    {#if active && $currentTrack}
+      <div class="mobile-wave-listening">
+        <button class="mobile-wave-current" onclick={() => window.dispatchEvent(new Event('lomify:open-player'))} aria-label={`Открыть плеер: ${$currentTrack.title}`}>
+          <span class="mobile-wave-current-art" aria-hidden="true">{#if $currentTrack.coverUrl}<img src={$currentTrack.coverUrl} alt="" onerror={(event) => handleArtworkError(event, $currentTrack.coverUrl)} onload={handleArtworkLoad} />{:else}<Music2 size={24} />{/if}</span>
+          <span class="mobile-wave-current-copy"><strong>{$currentTrack.title}</strong><small>{$currentTrack.artist}</small></span><ArrowUpRight size={19} />
+        </button>
+        {#if lyricLine && $settings.mobileWaveLyrics}<button class="mobile-wave-lyric" onclick={() => window.dispatchEvent(new Event('lomify:open-player'))} aria-label="Открыть текст песни в плеере">{lyricLine}</button>{/if}
+        <button class="mobile-text-button mobile-wave-refresh" disabled={busy} onclick={collect}><RefreshCw size={16} />Собрать заново</button>
+      </div>
+    {:else}<p class="mobile-wave-footer">{source === 'soundcloud' ? 'Из твоих любимых треков SoundCloud' : 'Музыка, подобранная для тебя'}</p>{/if}
   {/if}
 </section>

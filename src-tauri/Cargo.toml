@@ -1,6 +1,6 @@
 [package]
 name = "lomifynext-tauri"
-version = "1.0.16"
+version = "1.0.23"
 description = "LomifyNEXT"
 authors = ["dopaminegdev"]
 license = "GPL-3.0-or-later"
@@ -17,6 +17,7 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
+cc = "1"
 
 [dependencies]
 # `devtools` used to be listed here unconditionally, which compiles the web inspector
@@ -51,11 +52,13 @@ url = "2"
 regex = { version = "1", default-features = false, features = ["std"] }
 bytes = "1"
 tracing = "0.1"
-ffmpeg-sidecar = "2.5.2"
 discord-rich-presence = "1"
 
 call-client = { path = "../utils/call/client" }
 decrypt-client = { path = "../utils/decrypt-client" }
+
+[target.'cfg(not(target_os = "ios"))'.dependencies]
+ffmpeg-sidecar = "2.5.2"
 
 [target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
 souvlaki = "0.8"
@@ -88,3 +91,9 @@ devtools = ["tauri/devtools"]
 
 [patch.crates-io]
 brotli = { git = "https://github.com/dropbox/rust-brotli.git" }
+# Upstream iOS-only fix: keep UISceneConfiguration alive until UIKit retains it.
+# Remove when Tauri and Android's matching Tao constraint permit >= 0.36.
+tao = { path = "vendor/tao" }
+
+# Xcode 27: export the embedded SwiftRs runtime once, from Tauri.
+swift-rs = { path = "vendor/swift-rs" }

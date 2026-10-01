@@ -1,9 +1,10 @@
 <script lang="ts">
   import { onDestroy, untrack, tick } from 'svelte';
   import { slide } from 'svelte/transition';
-  import { Heart, ListPlus, EyeOff, Play, Pause, X, Plus, Music2, Download, Trash2, UserRound } from 'lucide-svelte';
+  import { Heart, ListPlus, EyeOff, Play, Pause, X, Plus, Music2, Download, Trash2, UserRound, Info, ArrowLeft } from 'lucide-svelte';
   import { get } from 'svelte/store';
-  import { currentTrack, isPlaying, likedTracks, playlists, settings } from '$lib/stores';
+  import { currentTrack, isPlaying, likedTracks, playlists, settings, listenStats } from '$lib/stores';
+  import { loadMobileTrackInfo, mobileTrackInfoRows } from '$lib/mobileTrackInfo';
   import { isTrackLiked, removeMobileLikedTrack, setTrackLiked } from '$lib/likes';
   import { getAudioUrl } from '$lib/api';
   import { addMobileTrackToPlaylist, createMobilePlaylist, hideMobileTrack, mobileTrackMenu, mobileTrackMenuPlaylistId, queueMobileTrackNext, removeMobileTrackFromPlaylist } from '$lib/mobileTracks';
@@ -23,6 +24,11 @@
   let choosingPlaylist = $state(false);
   let creatingPlaylist = $state(false);
   let playlistName = $state('');
+  let showingInfo = $state(false);
+  let infoTrack = $state<any | null>(null);
+  let infoStatus = $state<'idle' | 'loading' | 'ready' | 'error'>('idle');
+  let infoGeneration = 0;
+  const infoRows = $derived(infoTrack ? mobileTrackInfoRows(infoTrack, $listenStats.history) : []);
   let resumeMain = false;
   let mainTrackKey = '';
   const requested = $derived($mobileTrackMenu);
@@ -74,10 +80,28 @@
   }
 
   function close() {
+    ++infoGeneration;
     stopPreview();
     mobileTrackMenu.set(null);
     mobileTrackMenuPlaylistId.set(null);
   }
+  async function showTrackInfo() {
+    stopPreview();
+    showingInfo = true;
+    const track = selected;
+    infoTrack = track;
+    infoStatus = 'loading';
+    const generation = ++infoGeneration;
+    try {
+      const metadata = await loadMobileTrackInfo(track, $settings.yandexToken);
+      if (generation !== infoGeneration) return;
+      infoTrack = metadata;
+      infoStatus = 'ready';
+    } catch {
+      if (generation === infoGeneration) infoStatus = 'error';
+    }
+  }
+  function backToActions() { ++infoGeneration; showingInfo = false; }
   function onDialogClose() { if (!dialog.open) close(); }
   function animateMenu(open: boolean) {
     const generation = ++menuGeneration;
@@ -139,13 +163,17 @@
         previewStatus = '';
         choosingPlaylist = false;
         creatingPlaylist = false;
+        ++infoGeneration;
+        showingInfo = false;
+        infoTrack = null;
+        infoStatus = 'idle';
       }
       // Mount the heading/actions before showModal chooses focus and starts motion.
       if (track) void tick().then(() => { if (request === requestGeneration) animateMenu(true); });
       else animateMenu(false);
     });
   });
-  onDestroy(() => { ++requestGeneration; ++menuGeneration; menuAnimation?.cancel(); backdropAnimation?.cancel(); stopPreview(); });
+  onDestroy(() => { ++infoGeneration; ++requestGeneration; ++menuGeneration; menuAnimation?.cancel(); backdropAnimation?.cancel(); stopPreview(); });
 </script>
 
 <dialog bind:this={dialog} class="mobile-track-dialog" class:no-blur={$settings.mobileBlur === false} onclose={onDialogClose} oncancel={(event) => { event.preventDefault(); close(); }} aria-label="Действия с треком">
@@ -156,8 +184,16 @@
         <div><h2>{selected.title}</h2><p class="mobile-menu-artist">{selected.artist}</p></div>
         <button class="mobile-icon-button mobile-menu-close" aria-label="Закрыть меню трека" onclick={close}><X size={22} /></button>
       </div>
+      {#if showingInfo}
+        <div class="mobile-track-info-title"><button class="mobile-icon-button" aria-label="Назад к действиям с треком" onclick={backToActions}><ArrowLeft size={22} /></button><h3>О треке</h3></div>
+        <dl class="mobile-track-info">{#each infoRows as row}<div><dt>{row.label}</dt><dd>{row.value}</dd></div>{/each}</dl>
+        {#if infoTrack?.source === 'yandex'}<p class="mobile-hint">Яндекс Музыка не передаёт число прослушиваний этого трека.</p>{/if}
+        {#if infoStatus === 'loading'}<p class="mobile-hint" role="status">Обновляем информацию…</p>
+        {:else if infoStatus === 'error'}<p class="mobile-hint" role="status">Не удалось обновить информацию. Показаны сохранённые сведения.</p><button class="mobile-text-button" onclick={showTrackInfo}>Повторить</button>{/if}
+      {:else}
       {#if $settings.mobilePreview}<button class="mobile-menu-preview" onclick={() => previewing ? stopPreview() : void startPreview(selected)}>{#if previewing}<Pause size={18} /> Остановить превью{:else}<Play size={18} /> Слушать превью{/if}</button>{#if previewStatus}<p class="mobile-menu-status" role="status">{previewStatus}</p>{/if}{/if}
       <div class="mobile-menu-actions">
+        <button onclick={showTrackInfo}><Info size={20} aria-hidden="true" />О треке</button>
         <button class="mobile-menu-next" onclick={() => { queueMobileTrackNext(selected); close(); }}><ListPlus size={20} aria-hidden="true" /><span>В очередь<small>Сыграет следующим</small></span></button>
         {#each splitArtists(selected.artist, selected.artists) as artistName (artistName)}
           <button onclick={() => { close(); goToArtist(artistName); }}><UserRound size={20} aria-hidden="true" /><span>К исполнителю<small>{artistName}</small></span></button>
@@ -180,6 +216,7 @@
         {/if}
         <button onclick={() => { hideMobileTrack(selected); close(); }}><EyeOff size={20} />Не показывать больше</button>
       </div>
+      {/if}
     </div>
   {/if}
 </dialog>

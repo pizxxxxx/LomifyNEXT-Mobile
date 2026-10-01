@@ -93,3 +93,62 @@ for (const reason of ['abort', 'stop', 'account', 'track']) {
 assert.equal(filters.trackMatchesWaveFilters({ genre: 'rock' }, { waveGenre: 'rock' }), true);
 assert.equal(filters.trackMatchesWaveFilters({ genre: 'jazz' }, { waveGenre: 'rock' }), false);
 console.log('PASS desktop genre filters reused');
+
+// Audio-driven oval motion regression checks.
+const exports = {};
+vm.runInNewContext(ts.transpileModule(readFileSync(new URL('../src/lib/mobileWaveMotion.ts', import.meta.url), 'utf8'), {
+  compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.CommonJS }
+}).outputText, { exports });
+const { MobileWaveMotion } = exports;
+const bins = new Float32Array(64);
+const motion = new MobileWaveMotion();
+const energy = (bass, body = .015) => { bins.fill(0); bins.fill(bass, 9, 22); bins.fill(body, 25, 40); };
+energy(.08);
+motion.update(bins, 0);
+assert(motion.bass > .3, 'Quiet tracks should still visibly expand the ovals');
+assert(motion.rotation > 1, 'A real bass onset should rotate the oval');
+for (let now = 50; now <= 1500; now += 50) motion.update(bins, now);
+assert(motion.rotation > 0 && motion.rotation < 1, 'A sustained note must not invent new beats');
+const rotations = [];
+for (let beat = 0; beat < 6; beat++) {
+  const start = 1600 + beat * 500;
+  for (let frame = 0; frame < 10; frame++) {
+    energy(frame === 0 ? .5 : frame === 1 ? .3 : .02);
+    motion.update(bins, start + frame * 50);
+    if (frame === 0) rotations.push(motion.rotation);
+    assert(Math.abs(motion.rotation) <= 5.3 && Math.abs(motion.lightRotation) <= 4.91);
+    assert(motion.bass >= 0 && motion.bass <= 1 && motion.body >= 0 && motion.body <= 1);
+  }
+}
+for (let index = 1; index < rotations.length; index++) assert(rotations[index] * rotations[index - 1] < 0, 'Separate bass hits should alternate rotation');
+bins.fill(0); motion.update(bins, 5000);
+assert.equal(motion.bass + motion.body + motion.beat + motion.rotation + motion.lightRotation, 0, 'One silence event must settle everything without a timer');
+bins.fill(.9, 0, 6); motion.update(bins, 5100);
+assert.equal(motion.beat, 0, 'Sub-bass alone must not cause false kicks');
+bins.fill(NaN); motion.update(bins, 5200);
+assert.equal(motion.rotation, 0);
+energy(1, 1);
+for (let now = 6000; now < 15000; now += 50) motion.update(bins, now);
+assert(motion.rotation < 1, 'Loud sustained audio must also settle');
+motion.reset();
+assert.equal(motion.rotation + motion.bass + motion.body + motion.beat, 0);
+console.log('PASS: quiet/loud audio, kick alternation, sustained notes, angle limits, silence, sub-bass noise and reset');
+
+// A loud held bass masks the average energy increase, while separate bands still
+// contain real kick transients. This reproduces "only the first bar animates".
+{
+  const dense = new MobileWaveMotion();
+  const frame = new Float32Array(64);
+  let previousBeatAt = -Infinity, onsets = 0;
+  for (let index = 0; index < 2400; index++) {
+    const phase = index % 10;
+    frame.fill(.28);
+    frame.fill(.75, 6, 23);
+    frame[9] = .99; // held harmonic, not a new beat
+    frame.fill(phase === 0 ? .84 : phase === 1 ? .81 : .75, 13, 22);
+    dense.update(frame, index * 50);
+    if (dense.beat > .85 && index * 50 - previousBeatAt > 180) { onsets++; previousBeatAt = index * 50; }
+  }
+  assert(onsets >= 200, `Dense 120-second track lost its beats: ${onsets}/240`);
+  console.log(`PASS dense two-minute track: ${onsets}/240 beats detected after the first bar`);
+}

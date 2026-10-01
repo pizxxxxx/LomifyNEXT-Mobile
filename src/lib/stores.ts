@@ -1,4 +1,5 @@
 import { derived, get, readable, writable } from 'svelte/store';
+import { bindStoredState, flushStoredState, readStoredJson } from './storePersistence';
 
 // Global app state
 export const currentTrack = writable<{
@@ -284,7 +285,7 @@ function flushListenStats() {
     clearTimeout(statsPersistTimer);
     statsPersistTimer = null;
   }
-  localStorage.setItem('lomifynext_stats', JSON.stringify(latestStats));
+  void flushStoredState('lomifynext_stats');
 }
 
 function scheduleListenStatsPersist(value: typeof defaultStats) {
@@ -346,14 +347,12 @@ export interface PageAtmosphere {
 export const pageAtmosphere = writable<PageAtmosphere | null>(null);
 
 // Playlists store
-const storedPlaylists = typeof window !== 'undefined' ? localStorage.getItem('lomifynext_playlists') : null;
-export const playlists = writable<any[]>(storedPlaylists ? JSON.parse(storedPlaylists) : []);
-
-if (typeof window !== 'undefined') {
-  playlists.subscribe(value => {
-    localStorage.setItem('lomifynext_playlists', JSON.stringify(value));
-  });
-}
+const storedPlaylists = readStoredJson<unknown>('lomifynext_playlists', []);
+export const playlists = writable<any[]>(Array.isArray(storedPlaylists) ? storedPlaylists : []);
+export const playlistsStorageReady = typeof window === 'undefined' ? Promise.resolve() :
+  bindStoredState('lomifynext_playlists', playlists, {
+    restore: value => Array.isArray(value) ? value : [], onFailure: storageFailure
+  }).ready;
 
 // Notifications
 export const notifications = writable<{id: number, message: string, type: 'success'|'info'|'error'}[]>([]);
@@ -363,6 +362,12 @@ export function notify(message: string, type: 'success'|'info'|'error' = 'info')
   setTimeout(() => {
     notifications.update(n => n.filter(x => x.id !== id));
   }, 3000);
+}
+let lastStorageFailure = 0;
+function storageFailure() {
+  if (Date.now() - lastStorageFailure < 10000) return;
+  lastStorageFailure = Date.now();
+  notify('Не удалось сохранить изменения на устройстве. Освободи место и повтори импорт; текущая медиатека остаётся открытой.', 'error');
 }
 export const currentArtist = writable<string>('');
 export const searchQuery = writable('');
@@ -404,60 +409,46 @@ export function initStore() {
     if (storesInitialized) return;
     storesInitialized = true;
 
-    const stored = localStorage.getItem('lomifynext_settings');
-    if (stored) {
-      try {
-        settings.set({ ...defaultSettings, ...JSON.parse(stored) });
-      } catch (e) {
-        console.error("Failed to parse settings", e);
+    settings.set({ ...defaultSettings, ...readStoredJson('lomifynext_settings', {}) });
+    const settingsStorage = bindStoredState('lomifynext_settings', settings, {
+      restore: value => ({ ...defaultSettings, ...(value as object) }), onFailure: storageFailure,
+      mergeStartup: (saved, current, initial) => {
+        const merged = { ...saved };
+        for (const key of Object.keys(current) as (keyof typeof current)[]) {
+          if (JSON.stringify(current[key]) !== JSON.stringify(initial[key])) {
+            Object.assign(merged, { [key]: current[key] });
+          }
+        }
+        return merged;
       }
-    }
-    settings.subscribe(val => {
-      localStorage.setItem('lomifynext_settings', JSON.stringify(val));
     });
     const savedEq = get(settings);
     if (Array.isArray(savedEq.mobileEqGains) && savedEq.mobileEqGains.length === 10) {
       equalizerBands.set(savedEq.mobileEqGains.map(v => Math.max(-12, Math.min(12, Number(v) || 0))));
       activeEqualizerPreset.set(savedEq.mobileEqPreset || 'flat');
     }
-
-    const storedStats = localStorage.getItem('lomifynext_stats');
-    if (storedStats) {
-      try {
-        listenStats.set({ ...defaultStats, ...JSON.parse(storedStats) });
-      } catch (e) {
-        console.error("Failed to parse stats", e);
+    void settingsStorage.ready.then(() => {
+      const restored = get(settings);
+      if (Array.isArray(restored.mobileEqGains) && restored.mobileEqGains.length === 10) {
+        equalizerBands.set(restored.mobileEqGains.map(v => Math.max(-12, Math.min(12, Number(v) || 0))));
+        activeEqualizerPreset.set(restored.mobileEqPreset || 'flat');
       }
-    }
+    });
+
+    listenStats.set({ ...defaultStats, ...readStoredJson('lomifynext_stats', {}) });
+    bindStoredState('lomifynext_stats', listenStats, { restore: value => ({ ...defaultStats, ...(value as object) }), onFailure: storageFailure, delayMs: STATS_PERSIST_DELAY_MS });
     listenStats.subscribe(scheduleListenStatsPersist);
     window.addEventListener('pagehide', flushListenStats);
     document.addEventListener('visibilitychange', () => {
       if (document.visibilityState === 'hidden') flushListenStats();
     });
 
-    const storedLikes = localStorage.getItem('lomifynext_likes');
-    if (storedLikes) {
-      try {
-        likedTracks.set(sanitizeStoredLikes(JSON.parse(storedLikes)));
-      } catch (e) {
-        console.error("Failed to parse liked tracks", e);
-      }
-    }
-    likedTracks.subscribe(val => {
-      localStorage.setItem('lomifynext_likes', JSON.stringify(val));
-    });
+    likedTracks.set(sanitizeStoredLikes(readStoredJson('lomifynext_likes', [])));
+    bindStoredState('lomifynext_likes', likedTracks, { restore: sanitizeStoredLikes, onFailure: storageFailure });
 
-    const storedSearch = localStorage.getItem('lomifynext_search_history');
-    if (storedSearch) {
-      try {
-        searchHistory.set(JSON.parse(storedSearch));
-      } catch (e) {
-        console.error("Failed to parse search history", e);
-      }
-    }
-    searchHistory.subscribe(val => {
-      localStorage.setItem('lomifynext_search_history', JSON.stringify(val));
-    });
+    const storedSearch = readStoredJson<unknown>('lomifynext_search_history', []);
+    searchHistory.set(Array.isArray(storedSearch) ? storedSearch : []);
+    bindStoredState('lomifynext_search_history', searchHistory, { restore: value => Array.isArray(value) ? value : [], onFailure: storageFailure });
   }
 }
 
