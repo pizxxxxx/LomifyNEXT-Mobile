@@ -18,6 +18,10 @@ src-tauri/gen/android/app/src/main/jniLibs/
 *.apk
 *.aab
 *.apk.idsig
+*.keystore
+*.jks
+*.p12
+*.pfx
 *.ipa
 *.xcarchive/
 src-tauri/gen/apple/build/

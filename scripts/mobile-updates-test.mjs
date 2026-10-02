@@ -34,6 +34,15 @@ const release102 = makeRelease('v1.0.2', ['LomifyNEXT-1.0.2-arm64.apk']);
 assert.equal(core.findAndroidUpdate([release102], '1.0.0-beta.2')?.version, '1.0.2');
 assert.equal(core.findAndroidUpdate([release102], '1.0.2'), null);
 
+const otherKey28 = makeRelease('android-v1.0.28', ['LomifyNEXT-1.0.28-arm64-test.apk']);
+otherKey28.prerelease = true;
+assert.equal(core.findAndroidUpdate([otherKey28], '1.0.16'), null,
+  'An APK with the separate Mac test signature must not be offered to old installations');
+const normal28 = makeRelease('android-v1.0.28', ['LomifyNEXT-1.0.28-arm64.apk']);
+normal28.prerelease = true;
+assert.equal(core.findAndroidUpdate([normal28], '1.0.16')?.version, '1.0.28',
+  'Prerelease alone does not exclude an APK: its installable asset name decides');
+
 const bad = makeRelease('v2.0.0', ['LomifyNEXT-2.0.0-arm64.apk']);
 bad.assets[0].browser_download_url = 'https://example.com/malicious.apk';
 assert.equal(core.findAndroidUpdate([bad], '1.0.0-beta.2'), null, 'unexpected download host is rejected');
