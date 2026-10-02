@@ -2,15 +2,16 @@
   import { pushMobileHistory } from '$lib/mobileNavigation';
   import { ArrowLeft, Check, ChevronRight, Palette, AudioLines, Music2, Radio, ShieldCheck, Download, RefreshCw, ExternalLink, Pencil, Type, Library, AlignLeft } from 'lucide-svelte';
   import { onMount, tick } from 'svelte';
-  import { mobileConnectionRequest } from '$lib/mobile';
+  import { mobileConnectionRequest, isIOS } from '$lib/mobile';
   import { settings, currentView, listenStats } from '$lib/stores';
   import { APP_VERSION } from '$lib/version';
   import { withCount } from '$lib/utils/plural';
-  import { checkMobileUpdate, isAndroidUpdateTarget, mobileUpdateState, openMobileUpdate } from '$lib/mobileUpdates';
+  import { checkMobileUpdate, isAndroidUpdateTarget, mobileUpdateState, openMobileUpdate, openLatestIOSRelease } from '$lib/mobileUpdates';
   import { MOBILE_RELEASES_URL } from '$lib/mobileUpdateCore';
   import MobileConnections from './MobileConnections.svelte';
   import { allowMobilePlaylistReimport, removedMobilePlaylistCount } from '$lib/mobileTracks';
   let updateOpenError = $state('');
+  let checkingIOSRelease = $state(false);
   let removedPlaylistCount = $state(removedMobilePlaylistCount());
   let editingProfile = $state(false);
   let profileDraft = $state('');
@@ -26,6 +27,14 @@
     updateOpenError = '';
     try { await openMobileUpdate(url); }
     catch { updateOpenError = 'Не удалось открыть браузер. Перейди на страницу релизов GitHub вручную.'; }
+  }
+  async function checkIOSRelease() {
+    if (checkingIOSRelease) return;
+    updateOpenError = '';
+    checkingIOSRelease = true;
+    try { await openLatestIOSRelease(); }
+    catch (error) { updateOpenError = error instanceof Error ? error.message : 'Не удалось открыть iOS-релиз. Попробуй ещё раз.'; }
+    finally { checkingIOSRelease = false; }
   }
   const accents = [
     { id: 'red-dragon', name: 'Коралл', color: '#ff9866' },
@@ -257,6 +266,10 @@
         {/if}
         <button class="mobile-secondary" disabled={$mobileUpdateState.status === 'checking'} onclick={() => checkMobileUpdate(true)}><RefreshCw size={17} aria-hidden="true" /> Проверить сейчас</button>
       {:else}
+        {#if isIOS}
+          <button class="mobile-primary" disabled={checkingIOSRelease} onclick={checkIOSRelease}><RefreshCw size={18} class={checkingIOSRelease ? 'animate-spin' : ''} aria-hidden="true" /> {checkingIOSRelease ? 'Проверяем…' : 'Проверить обновление'}</button>
+          <p class="mobile-hint" role={checkingIOSRelease ? 'status' : undefined}>{checkingIOSRelease ? 'Ищем последнюю iOS-сборку на GitHub…' : 'Откроется последний iOS-релиз на GitHub. Скачай IPA и установи через AltStore.'}</p>
+        {/if}
         <p class="mobile-hint">На iPhone открой новый IPA через «+» в AltStore с тем же Apple ID. Данные приложения сохранятся. Обновляй подпись в AltStore раз в 7 дней, пока AltServer запущен на Mac.</p>
       {/if}
       <button class="mobile-text-button" onclick={() => openUpdate(MOBILE_RELEASES_URL)}><ExternalLink size={17} aria-hidden="true" /> Все релизы GitHub</button>

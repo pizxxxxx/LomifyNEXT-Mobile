@@ -7,6 +7,16 @@ export interface ChangelogEntry {
 
 export const CHANGELOG_HISTORY: ChangelogEntry[] = [
   {
+    version: '1.0.25 beta', date: '2026-10-02',
+    highlights: [
+      { tag: 'Обновления', text: 'Кнопка на iPhone открывает последний iOS-релиз с IPA на GitHub.' }
+    ],
+    details: [
+      { category: 'feature', title: 'Проверить обновление на iPhone', description: 'Настройки → Обновления. Проверяем опубликованные IPA, включая iOS beta, и открываем страницу самого нового релиза в браузере. Android-релизы и черновики пропускаются; установка остаётся через AltStore.' },
+      { category: 'improvement', title: 'Анимации 1.0.24 сохранены', description: 'Обложка превращается в фон текста за 620 мс. Первый монтаж текста отложен до окончания движения, а при повторном открытии готовый текст сохраняется.' }
+    ]
+  },
+  {
     version: '1.0.24 beta', date: '2026-10-02',
     highlights: [
       { tag: 'Движение', text: 'Более заметный переход обложки в текст; загрузка не съедает начало анимации.' },

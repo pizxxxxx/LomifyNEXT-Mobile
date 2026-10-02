@@ -11,7 +11,7 @@ const core = {};
 vm.runInNewContext(outputText, { exports: core, URL, Error, Math, Number, String });
 
 const makeRelease = (tag, names) => ({
-  draft: false, prerelease: tag.includes('beta'), html_url: `https://github.com/pizxxxxx/LomifyNEXT-Mobile/releases/tag/${tag}`,
+  tag_name: tag, draft: false, prerelease: tag.includes('beta'), html_url: `https://github.com/pizxxxxx/LomifyNEXT-Mobile/releases/tag/${tag}`,
   body: 'Test release',
   assets: names.map(name => ({ name, browser_download_url: `https://github.com/pizxxxxx/LomifyNEXT-Mobile/releases/download/${tag}/${name}` }))
 });
@@ -41,3 +41,41 @@ bad.assets[0].browser_download_url = 'http://github.com/pizxxxxx/LomifyNEXT-Mobi
 assert.equal(core.findAndroidUpdate([bad], '1.0.0-beta.2'), null, 'non-TLS download is rejected');
 
 console.log('PASS Android release selection, version ordering and download URL checks');
+
+const ios24 = { ...makeRelease('ios-v1.0.24', ['LomifyNEXT-1.0.24.ipa']), prerelease: true };
+const ios25 = { ...makeRelease('ios-v1.0.25', ['LomifyNEXT-1.0.25.ipa']), prerelease: true };
+const android99 = makeRelease('v9.0.0', ['LomifyNEXT-9.0.0-arm64.apk']);
+assert.equal(core.findLatestIOSRelease([android99, ios24, ios25]), ios25.html_url, 'Select the latest IPA even when Android is latest and iOS is a prerelease');
+assert.equal(core.findLatestIOSRelease([{ ...ios25, draft: true }, ios24]), ios24.html_url, 'Do not open drafts');
+assert.equal(core.findLatestIOSRelease([{ ...ios25, assets: [] }, ios24]), ios24.html_url, 'A release without an uploaded IPA is not installable');
+assert.equal(core.findLatestIOSRelease([{ ...ios25, html_url: 'https://example.com/' }, ios24]), ios24.html_url);
+assert.equal(core.findLatestIOSRelease([{ ...ios25, assets: [{ ...ios25.assets[0], browser_download_url: 'https://example.com/app.ipa' }] }]), null);
+assert.equal(core.findLatestIOSRelease([]), null);
+console.log('PASS iOS release selection: IPA only, beta releases, version ordering, drafts, missing IPA and expected repository');
+
+const opened = [];
+let response = { ok: true, json: async () => [android99, ios24, ios25] };
+const updater = {};
+vm.runInNewContext(ts.transpileModule(readFileSync(new URL('../src/lib/mobileUpdates.ts', import.meta.url), 'utf8'), {
+  compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.CommonJS }
+}).outputText, {
+  exports: updater, window: { __TAURI_INTERNALS__: {} }, AbortController, setTimeout, clearTimeout, Error,
+  fetch: async (url, options) => {
+    assert.equal(url, core.MOBILE_IOS_RELEASES_API);
+    assert.equal(options.cache, 'no-store');
+    return response;
+  },
+  require: name => ({
+    'svelte/store': { writable: value => ({ value }) },
+    '@tauri-apps/api/app': {}, '@tauri-apps/plugin-opener': { openUrl: async url => opened.push(url) },
+    './version': { APP_PACKAGE_VERSION: '1.0.25' }, './mobileUpdateCore': core
+  }[name])
+});
+await updater.openLatestIOSRelease();
+assert.deepEqual(opened, [ios25.html_url], 'Use the native browser opener with the resolved iOS release');
+response = { ok: false, status: 403 };
+await assert.rejects(updater.openLatestIOSRelease(), /GitHub временно ограничил/);
+response = { ok: true, json: async () => ({ error: 'bad response' }) };
+await assert.rejects(updater.openLatestIOSRelease(), /неожиданный ответ/);
+assert.equal(opened.length, 1, 'Failed checks do not navigate to Android or an unknown URL');
+console.log('PASS iOS check: uncached request, native opener, API limit and invalid response handling');

@@ -1,12 +1,30 @@
 export const MOBILE_RELEASES_URL = 'https://github.com/pizxxxxx/LomifyNEXT-Mobile/releases';
 export const MOBILE_RELEASES_API = 'https://api.github.com/repos/pizxxxxx/LomifyNEXT-Mobile/releases?per_page=10';
+export const MOBILE_IOS_RELEASES_API = 'https://api.github.com/repos/pizxxxxx/LomifyNEXT-Mobile/releases?per_page=100';
 
 export interface GitHubRelease {
+  tag_name?: string;
   draft: boolean;
   prerelease: boolean;
   html_url: string;
   body?: string | null;
   assets: { name: string; browser_download_url: string }[];
+}
+
+/** iOS betas are published separately; GitHub's /latest points at Android. */
+export function findLatestIOSRelease(releases: GitHubRelease[]): string | null {
+  let best: { version: string; url: string } | null = null;
+  for (const release of releases) {
+    if (release.draft || !Array.isArray(release.assets)) continue;
+    const version = /^ios-v(\d+\.\d+\.\d+(?:-(?:alpha|beta|rc)\.\d+)?)$/i.exec(release.tag_name || '')?.[1];
+    if (!version || release.html_url !== `${MOBILE_RELEASES_URL}/tag/${release.tag_name}`) continue;
+    const name = `LomifyNEXT-${version}.ipa`;
+    const hasIPA = release.assets.some(asset => asset.name === name &&
+      asset.browser_download_url === `${MOBILE_RELEASES_URL}/download/${release.tag_name}/${name}`);
+    if (!hasIPA || best && compareMobileVersions(version, best.version) <= 0) continue;
+    best = { version, url: release.html_url };
+  }
+  return best?.url ?? null;
 }
 
 export interface AndroidUpdate {
