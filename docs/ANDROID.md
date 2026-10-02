@@ -1,11 +1,11 @@
 # LomifyNEXT для Android
 
-Тестовая сборка 1.0.28 переносит общий интерфейс iOS 1.0.27 и обновляет
+Сборка 1.0.28 переносит общий интерфейс iOS 1.0.27 и обновляет
 Android-управление фоновой очередью и паузой.
 [Что перенесено, проверки и подпись](ANDROID_PARITY_1.0.28.md).
-[APK на GitHub](https://github.com/pizxxxxx/LomifyNEXT-Mobile/releases/tag/android-v1.0.28)
-подписан ключом Mac: поверх GitHub-версии 1.0.16 он не установится.
-Для совместимого обновления нужен прежний ключ; [как его найти](ANDROID_SIGNING.md).
+[APK на GitHub](https://github.com/pizxxxxx/LomifyNEXT-Mobile/releases/download/android-v1.0.28/LomifyNEXT-1.0.28-arm64.apk)
+подписан прежним ключом Windows: подпись совместима с GitHub-версией 1.0.16.
+Для обновления выбирай файл без `-test`; [подробнее о подписи](ANDROID_SIGNING.md).
 Исходники Android находятся в `main`, iOS — в `ios`.
 
 Этот проект отделён от настольного: изменения находятся в `LomifyNEXT-Mobile`.

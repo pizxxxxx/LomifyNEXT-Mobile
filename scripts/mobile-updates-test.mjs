@@ -42,6 +42,12 @@ const normal28 = makeRelease('android-v1.0.28', ['LomifyNEXT-1.0.28-arm64.apk'])
 normal28.prerelease = true;
 assert.equal(core.findAndroidUpdate([normal28], '1.0.16')?.version, '1.0.28',
   'Prerelease alone does not exclude an APK: its installable asset name decides');
+const bothSignatures28 = makeRelease('android-v1.0.28', [
+  'LomifyNEXT-1.0.28-arm64-test.apk', 'LomifyNEXT-1.0.28-arm64.apk'
+]);
+assert.equal(core.findAndroidUpdate([bothSignatures28], '1.0.16')?.apkUrl,
+  bothSignatures28.assets[1].browser_download_url,
+  'When both signatures are published, select only the APK compatible with old installations');
 
 const bad = makeRelease('v2.0.0', ['LomifyNEXT-2.0.0-arm64.apk']);
 bad.assets[0].browser_download_url = 'https://example.com/malicious.apk';
