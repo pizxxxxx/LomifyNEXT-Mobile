@@ -16,6 +16,7 @@
   import { Play as PlayData, Pause as PauseData } from 'lucide';
   import { isScWaveTrack, refillScWave, scWaveActive, startScWave, stopScWave } from '$lib/mobileTracks';
 
+  let { consumeWaveAutoplayRequest }: { consumeWaveAutoplayRequest?: () => boolean } = $props();
   let busy = $state(false);
   let error = $state('');
   let tuning = $state(false);
@@ -31,6 +32,9 @@
   const playing = $derived(active && $isPlaying);
   const filters = $derived(describeWaveFilters($settings));
   const canListen = $derived(source === 'soundcloud' || !!$settings.yandexToken);
+  $effect(() => {
+    if ($currentView !== 'wave') controller?.abort();
+  });
   // Original line geometry, computed once. Music only changes the layer transforms.
   const ribbons = Array.from({ length: 9 }, (_, index) => Array.from({ length: 121 }, (_, point) => {
     const angle = point / 120 * Math.PI * 2;
@@ -115,6 +119,12 @@
       }
       if (found !== lyricLine) lyricLine = found;
     });
+    // Only the home shortcut requests playback; history restoration never does.
+    if (consumeWaveAutoplayRequest?.() && canListen) {
+      if (active) {
+        if (!$isPlaying) isPlaying.set(true);
+      } else void collect();
+    }
     return () => {
       disposed = true;
       document.removeEventListener('visibilitychange', syncVisualizerVisibility);
@@ -136,12 +146,18 @@
     if (busy) return;
     if (source === 'soundcloud') {
       busy = true; error = '';
+      const request = new AbortController(); controller = request;
       try {
-        const started = await startScWave();
-        if (!started) error = 'Не удалось собрать поток. Добавь любимые треки SoundCloud или попробуй ещё раз с интернетом.';
-        else void refillScWave();
-      } catch { error = 'Не удалось загрузить SoundCloud. Проверь интернет и попробуй ещё раз.'; }
-      finally { busy = false; }
+        const started = await startScWave({ signal: request.signal });
+        if (!request.signal.aborted) {
+          if (!started) error = 'Не удалось собрать поток. Добавь любимые треки SoundCloud или попробуй ещё раз с интернетом.';
+          else void refillScWave();
+        }
+      } catch {
+        if (!request.signal.aborted) error = 'Не удалось загрузить SoundCloud. Проверь интернет и попробуй ещё раз.';
+      } finally {
+        if (controller === request) { controller = null; busy = false; }
+      }
       return;
     }
     if (!$settings.yandexToken) { connect(); return; }

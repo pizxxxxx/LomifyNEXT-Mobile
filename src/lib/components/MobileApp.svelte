@@ -47,6 +47,16 @@
   let nativeNavigationVisible = $state(true);
   let nativeUpdates: Promise<unknown> = Promise.resolve();
   let cancelMount = () => {};
+  let waveAutoplayRequested = false;
+  function openWave() {
+    waveAutoplayRequested = true;
+    navigate('wave');
+  }
+  function consumeWaveAutoplayRequest(): boolean {
+    const requested = waveAutoplayRequested;
+    waveAutoplayRequested = false;
+    return requested;
+  }
   function nativeTint(): number[] {
     const context = document.createElement('canvas').getContext('2d');
     if (!context) return [1, .533, .302];
@@ -110,6 +120,7 @@
     let restoring = false;
     let previous = $currentView;
     const release = currentView.subscribe(view => {
+      if (view !== 'wave') waveAutoplayRequested = false;
       cancelMount();
       if (visited.includes(view)) readyView = view;
       else {
@@ -198,7 +209,7 @@
           </button>
         {/if}
         <button class="mobile-search-shortcut" onclick={() => navigate('search')}><SearchIcon size={22} /><span>Трек, исполнитель или альбом</span></button>
-        <button class="mobile-wave-shortcut" class:is-soundcloud={$settings.searchSource !== 'yandex'} onclick={() => navigate('wave')}>
+        <button class="mobile-wave-shortcut" class:is-soundcloud={$settings.searchSource !== 'yandex'} onclick={openWave}>
           <span class="mobile-wave-shortcut-icon"><Radio size={30} strokeWidth={1.4} /></span><span><small>{$settings.searchSource === 'yandex' ? 'Яндекс Музыка' : 'SoundCloud'}</small><strong>{$settings.mobileWaveName === 'wave' ? 'Моя Волна' : 'Моя Тусня'}</strong><span>{$settings.searchSource === 'yandex' ? 'Музыка на твоей частоте' : 'Поток из любимых треков'}</span></span><ArrowUpRight size={22} />
         </button>
         <button class="mobile-favorites" onclick={() => navigate('library')}>
@@ -240,7 +251,7 @@
         </div>
     {/each}
     {#if $currentView === 'wave'}
-      <div class="mobile-pane mobile-wave-pane" transition:waveTransition onintrostart={(event) => (event.currentTarget as HTMLElement).inert = false} onoutrostart={(event) => (event.currentTarget as HTMLElement).inert = true}>{#if readyView === 'wave'}<MobileWave />{:else}{@render opening($settings.mobileWaveName === 'wave' ? 'Моя Волна' : 'Моя Тусня')}{/if}</div>
+      <div class="mobile-pane mobile-wave-pane" transition:waveTransition onintrostart={(event) => (event.currentTarget as HTMLElement).inert = false} onoutrostart={(event) => (event.currentTarget as HTMLElement).inert = true}>{#if readyView === 'wave'}<MobileWave {consumeWaveAutoplayRequest} />{:else}{@render opening($settings.mobileWaveName === 'wave' ? 'Моя Волна' : 'Моя Тусня')}{/if}</div>
     {/if}
     {#if $currentView === 'equalizer'}<div class="mobile-pane" use:mobileReveal={readyView === 'equalizer' ? 'ready' : 'opening'}>{#if readyView === 'equalizer'}<MobileEqualizer />{:else}{@render opening('Эквалайзер')}{/if}</div>{/if}
     {#if $currentView === 'lyrics' || $currentView === 'artist'}

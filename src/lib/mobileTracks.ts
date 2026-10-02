@@ -182,8 +182,13 @@ function scWaveCandidates(): any[] {
   return [...unique.values()];
 }
 
-export async function startScWave(): Promise<boolean> {
+export async function startScWave(options: { signal?: AbortSignal } = {}): Promise<boolean> {
+  if (options.signal?.aborted) return false;
   const generation = ++scWaveGeneration;
+  const initialTrack = get(currentTrack);
+  const initialSource = get(settings).searchSource;
+  const cancelled = () => options.signal?.aborted || generation !== scWaveGeneration
+    || get(currentTrack) !== initialTrack || get(settings).searchSource !== initialSource;
   stopWave();
   scWaveSeen.clear();
   scWaveActive.set(false);
@@ -193,7 +198,7 @@ export async function startScWave(): Promise<boolean> {
   if (!candidates.length) {
     // No imported likes yet: use the desktop discovery feed as a starting point.
     const feed = await getTrendingTracks(get(likedTracks), get(listenStats), get(searchHistory), get(playlists));
-    if (generation !== scWaveGeneration) return false;
+    if (cancelled()) return false;
     candidates = feed.filter((track: any) => track.source === 'soundcloud' && !isMobileHidden(track) && trackMatchesWaveGenre(track, get(settings)));
   }
   if (!candidates.length) return false;

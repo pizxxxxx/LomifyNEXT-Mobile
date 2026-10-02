@@ -74,3 +74,50 @@ assert.equal(exports.mobileNextQueueIndex(get(stores.queue), true, () => .99), 0
 assert.equal(exports.mobileNextQueueIndex([liked[0], get(stores.queue)[0]], true, () => 0), 1);
 assert.equal(exports.mobileNextQueueIndex(liked, true, () => .99), 2);
 console.log('PASS explicit next, shuffle priority, deduplication and unchanged likes/playback');
+
+// Leaving the wave page must not allow a delayed discovery feed to take over audio.
+for (const reason of ['abort', 'stop', 'track', 'source']) {
+  stores.likedTracks.set([]);
+  stores.currentTrack.set(null);
+  stores.isPlaying.set(false);
+  stores.settings.update(s => ({ ...s, searchSource: 'soundcloud', mobileHiddenTracks: [] }));
+  const previousQueue = [requested];
+  stores.queue.set(previousQueue);
+  let reply;
+  dependencies['./api'].getTrendingTracks = () => new Promise(resolve => { reply = resolve; });
+  const controller = new AbortController();
+  const pending = exports.startScWave({ signal: controller.signal });
+  if (reason === 'abort') controller.abort();
+  if (reason === 'stop') exports.stopScWave();
+  if (reason === 'track') stores.currentTrack.set(requested);
+  if (reason === 'source') stores.settings.update(s => ({ ...s, searchSource: 'yandex' }));
+  reply(liked);
+  assert.equal(await pending, false);
+  assert.equal(get(stores.queue), previousQueue);
+  assert.equal(get(stores.isPlaying), false);
+  assert.equal(get(exports.scWaveActive), false);
+  assert.notEqual(get(stores.currentTrack)?.mobileScWave, true);
+  console.log(`PASS late SoundCloud start ignored after ${reason}`);
+}
+{
+  const controller = new AbortController();
+  controller.abort();
+  stoppedYandex = false;
+  assert.equal(await exports.startScWave({ signal: controller.signal }), false);
+  assert.equal(stoppedYandex, false, 'an already cancelled request must leave the station alone');
+  console.log('PASS already cancelled SoundCloud start has no side effects');
+}
+{
+  stores.currentTrack.set(null);
+  stores.settings.update(s => ({ ...s, searchSource: 'soundcloud' }));
+  const replies = [];
+  dependencies['./api'].getTrendingTracks = () => new Promise(resolve => replies.push(resolve));
+  const first = exports.startScWave(), second = exports.startScWave();
+  replies[1]([{ ...liked[0], id: 'new' }]);
+  assert.equal(await second, true);
+  replies[0]([{ ...liked[1], id: 'stale' }]);
+  assert.equal(await first, false);
+  assert.equal(get(stores.currentTrack).id, 'new');
+  assert.equal(get(stores.isPlaying), true);
+  console.log('PASS latest SoundCloud start wins, without a late queue replacement');
+}
