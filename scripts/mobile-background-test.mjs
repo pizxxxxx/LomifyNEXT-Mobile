@@ -11,9 +11,10 @@ const fn = source.statements.find(node => ts.isFunctionDeclaration(node) && node
 assert(fn, 'Player reconciliation function must exist');
 const store = value => ({ value, set(next) { this.value = next; } });
 const [a, b, c] = ['a', 'b', 'c'].map(id => ({ id, duration: 180000 }));
+for (const platform of ['ios', 'android']) {
 const calls = [];
 const env = {
-  exports: {}, mobile: true, isIOS: true, lastBackgroundSequence: 0, repeatMode: 0,
+  exports: {}, mobile: true, isIOS: platform === 'ios', isAndroid: platform === 'android', usesNativeMobileAudio: true, lastBackgroundSequence: 0, repeatMode: 0,
   duration: 180, currentTime: 0, mobileDisplayTime: 0, nativeLoadedTrack: null,
   nativeCurrentSource: null, lastPlayStateSent: null, $waveActive: false,
   queue: store([c]), trackHistory: store([a]), currentTrack: store(b),
@@ -51,4 +52,5 @@ await env.exports.reconcile({ epoch: 5, sequence: 4, loading: false, advances })
 assert.equal(calls.length, 4, 'Delivered history must not be replayed');
 await env.exports.reconcile({ epoch: 5, sequence: 5, loading: true, advances });
 assert.equal(calls.length, 4, 'Do not reconcile before the native load completes');
-console.log('PASS native background: Previous -> Next, forward -> Previous, history, pause preservation and duplicate/loading guards');
+console.log(`PASS ${platform} native background: Previous -> Next, forward -> Previous, history, pause preservation and duplicate/loading guards`);
+}

@@ -1,6 +1,12 @@
 package com.lomify.next
 
 import android.os.Bundle
+import android.content.BroadcastReceiver
+import android.content.Context
+import android.content.Intent
+import android.content.IntentFilter
+import android.media.AudioManager
+import androidx.core.content.ContextCompat
 import androidx.activity.enableEdgeToEdge
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
@@ -11,6 +17,13 @@ import androidx.activity.OnBackPressedCallback
 
 class MainActivity : TauriActivity() {
   private external fun nativeVisibilityChanged(hidden: Boolean)
+  private external fun nativeAudioOutputLost()
+  // The playback service may not exist while the first track is downloading.
+  private val outputLost = object : BroadcastReceiver() {
+    override fun onReceive(context: Context?, intent: Intent?) {
+      if (intent?.action == AudioManager.ACTION_AUDIO_BECOMING_NOISY) nativeAudioOutputLost()
+    }
+  }
   // The SPA uses state-only navigation; WebView.canGoBack is not reliable for it.
   override val handleBackNavigation: Boolean = false
 
@@ -34,6 +47,8 @@ class MainActivity : TauriActivity() {
   override fun onCreate(savedInstanceState: Bundle?) {
     enableEdgeToEdge()
     super.onCreate(savedInstanceState)
+    ContextCompat.registerReceiver(this, outputLost,
+      IntentFilter(AudioManager.ACTION_AUDIO_BECOMING_NOISY), ContextCompat.RECEIVER_EXPORTED)
     // Keep the WebView and touch controls outside system bars and display cutouts.
     val content = findViewById<android.view.View>(android.R.id.content)
     content.setBackgroundColor(Color.rgb(16, 16, 20))
@@ -57,5 +72,10 @@ class MainActivity : TauriActivity() {
   override fun onResume() {
     super.onResume()
     nativeVisibilityChanged(false)
+  }
+
+  override fun onDestroy() {
+    unregisterReceiver(outputLost)
+    super.onDestroy()
   }
 }

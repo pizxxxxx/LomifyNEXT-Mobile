@@ -1,7 +1,7 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "LomifyNEXT",
-  "version": "1.0.27",
+  "version": "1.0.28",
   "identifier": "com.lomify.next",
   "build": {
     "beforeDevCommand": "npm run dev",
@@ -38,11 +38,11 @@
     "targets": "all",
     "android": {
       "minSdkVersion": 26,
-      "versionCode": 9010020
+      "versionCode": 9010021
     },
     "iOS": {
       "minimumSystemVersion": "15.0",
-      "bundleVersion": "10020"
+      "bundleVersion": "10021"
     },
     "icon": [
       "icons/32x32.png",

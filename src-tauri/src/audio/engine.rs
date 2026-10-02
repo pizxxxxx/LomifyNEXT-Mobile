@@ -252,6 +252,8 @@ fn begin_crossfade(state: &AudioState, crossfade_ms: u64, delay_ms: u64) {
 /// плеера в `commit_loaded_track`, и тогда переход честнее отложить до следующего тика, чем
 /// начать в один голос и оставить входящий трек на паузе навсегда.
 pub fn start_pending_crossfade(state: &AudioState) -> bool {
+    #[cfg(target_os = "android")]
+    if crate::android_playback_gate::blocked() { return false; }
     #[cfg(target_os = "ios")]
     if crate::ios_media::playback_blocked() { return false; }
     if state.player.lock().unwrap().is_none() {
@@ -333,11 +335,14 @@ fn commit_loaded_track(
             new_player.set_volume(vol);
         }
     }
-    #[cfg(target_os = "ios")]
+    #[cfg(any(target_os = "android", target_os = "ios"))]
     let waiting = crossfade_is_waiting(state);
     let mut current = state.player.lock().unwrap();
     #[cfg(target_os = "ios")]
     if crate::ios_media::playback_blocked() || _start_paused || waiting { new_player.pause(); }
+    else { new_player.play(); }
+    #[cfg(target_os = "android")]
+    if crate::android_playback_gate::blocked() || _start_paused || waiting { new_player.pause(); }
     else { new_player.play(); }
     *current = Some(new_player);
     drop(current);
@@ -380,7 +385,7 @@ async fn build_player_from_bytes(
             &mixer,
             volume,
             normalization_gain,
-            start_paused || cfg!(target_os = "ios"),
+            start_paused || cfg!(any(target_os = "android", target_os = "ios")),
             eq_params,
             analyser_buffer,
         )?;
@@ -485,7 +490,7 @@ pub fn reload_current_track(state: &AudioState) -> Result<(), String> {
         } else {
             1.0
         },
-        was_paused || cfg!(target_os = "ios"),
+        was_paused || cfg!(any(target_os = "android", target_os = "ios")),
         state.eq_params.clone(),
         state.analyser_buffer.clone(),
     )?
@@ -500,11 +505,14 @@ pub fn reload_current_track(state: &AudioState) -> Result<(), String> {
             .ok();
     }
 
-    #[cfg(target_os = "ios")]
+    #[cfg(any(target_os = "android", target_os = "ios"))]
     let waiting = crossfade_is_waiting(state);
     let mut player = state.player.lock().unwrap();
     #[cfg(target_os = "ios")]
     if crate::ios_media::playback_blocked() || waiting { new_player.pause(); } else { new_player.play(); }
+    #[cfg(target_os = "android")]
+    if crate::android_playback_gate::blocked() || was_paused || waiting { new_player.pause(); }
+    else { new_player.play(); }
     if let Some(old) = player.take() {
         old.stop();
     }
@@ -874,6 +882,8 @@ pub async fn load_url(
 }
 
 pub fn play(app: &AppHandle, state: State<'_, AudioState>) {
+    #[cfg(target_os = "android")]
+    if crate::android_playback_gate::blocked() { return; }
     #[cfg(target_os = "ios")]
     if crate::ios_media::playback_blocked() { return; }
     // If the device errored (sleep/wake, headphone unplug), reconnect immediately
@@ -1017,7 +1027,7 @@ pub fn seek_to(state: &AudioState, position: f64) -> Result<(), String> {
         } else {
             1.0
         },
-        was_paused || cfg!(target_os = "ios"),
+        was_paused || cfg!(any(target_os = "android", target_os = "ios")),
         state.eq_params.clone(),
         state.analyser_buffer.clone(),
     )
@@ -1027,11 +1037,14 @@ pub fn seek_to(state: &AudioState, position: f64) -> Result<(), String> {
         new_player.try_seek(target).ok();
     }
 
-    #[cfg(target_os = "ios")]
+    #[cfg(any(target_os = "android", target_os = "ios"))]
     let waiting = crossfade_is_waiting(state);
     let mut player = state.player.lock().unwrap();
     #[cfg(target_os = "ios")]
     if crate::ios_media::playback_blocked() || waiting { new_player.pause(); } else { new_player.play(); }
+    #[cfg(target_os = "android")]
+    if crate::android_playback_gate::blocked() || was_paused || waiting { new_player.pause(); }
+    else { new_player.play(); }
     if let Some(old) = player.take() {
         old.stop();
     }
@@ -1120,6 +1133,8 @@ pub fn set_normalization(enabled: bool, state: State<'_, AudioState>) {
 }
 
 pub fn is_playing(state: State<'_, AudioState>) -> bool {
+    #[cfg(target_os = "android")]
+    if crate::android_playback_gate::blocked() { return false; }
     #[cfg(target_os = "ios")]
     if crate::ios_media::playback_blocked() { return false; }
     let playing = state

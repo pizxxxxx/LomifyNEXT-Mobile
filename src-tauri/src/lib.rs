@@ -13,6 +13,8 @@ mod ios_audio;
 mod ios_media;
 #[cfg(target_os = "ios")]
 mod ios_playback_gate;
+#[cfg(target_os = "android")]
+mod android_playback_gate;
 mod ios_navigation;
 mod network;
 mod shared;
@@ -282,6 +284,8 @@ pub fn run() {
             audio::audio_play,
             audio::audio_ios_begin_track,
             audio::audio_ios_previous_prepare,
+            audio::audio_android_begin_track,
+            audio::audio_android_previous_prepare,
             audio::audio_pause,
             audio::audio_stop,
             audio::audio_cancel_load,

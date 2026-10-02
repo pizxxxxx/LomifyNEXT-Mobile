@@ -4,6 +4,7 @@ import { writable } from 'svelte/store';
 export const mobileConnectionRequest = writable<'yandex' | null>(null);
 
 export const isIOS = typeof navigator !== 'undefined' && /iPhone|iPad/i.test(navigator.userAgent);
+export const isAndroid = typeof navigator !== 'undefined' && /Android/i.test(navigator.userAgent);
 
 /** Native Android and iOS use the phone shell, including tablets and landscape. */
 export const isMobile = typeof navigator !== 'undefined' &&

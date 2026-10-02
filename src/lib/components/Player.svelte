@@ -7,13 +7,15 @@
   import { mobileHold } from '$lib/actions/mobileHold';
   import { mobileSwipeDismiss } from '$lib/actions/mobileSwipeDismiss';
   import { mobileSwipeBack } from '$lib/actions/mobileSwipeBack';
-  import { isIOS } from '$lib/mobile';
+  import { isIOS, isAndroid } from '$lib/mobile';
   import { iosGlassButton } from '$lib/actions/iosGlassButton';
   import { mobilePlayerArtwork } from '$lib/actions/mobilePlayerArtwork';
   import { isScWaveTrack, mobileNextQueueIndex, mobileTrackMenu, refillScWave } from '$lib/mobileTracks';
   import MobileVideoBackdrop from './MobileVideoBackdrop.svelte';
   import Lyrics from './Lyrics.svelte';
   export let mobile = false;
+  const usesNativeMobileAudio = isIOS || isAndroid;
+  const previousPrepareCommand = isIOS ? 'audio_ios_previous_prepare' : 'audio_android_previous_prepare';
   let mobileExpanded = false;
   let mobileShowLyrics = false;
   let mobileDetailsReady = false;
@@ -398,13 +400,13 @@
     const resolved: BackgroundCandidate[] = [];
     const sources: Array<{ key: string; title: string; artist: string; coverUrl: string | null; filePath: string | null; url: string | null }> = [];
     await invoke('audio_background_prepare', { epoch: nativeEpoch, candidates: [] });
-    if (isIOS) {
+    if (usesNativeMobileAudio) {
       const current = get(currentTrack);
       if (current && nativeCurrentSource) {
         resolved.push({ epoch: nativeEpoch, track: current, index: -3, key: nativeCurrentSource.key, source: nativeCurrentSource });
         backgroundCandidates = [...resolved];
       }
-      await invoke('audio_ios_previous_prepare', { epoch: nativeEpoch, previous: null, current: nativeCurrentSource });
+      await invoke(previousPrepareCommand, { epoch: nativeEpoch, previous: null, current: nativeCurrentSource });
       const track = get(trackHistory).at(-1);
       if (track) {
         try {
@@ -415,7 +417,7 @@
           if (filePath || url) {
             resolved.push({ epoch: nativeEpoch, track, index: -2, key, source: { key, title: track.title, artist: track.artist, coverUrl: track.coverUrl || null, filePath, url } });
             backgroundCandidates = [...resolved];
-            await invoke('audio_ios_previous_prepare', { epoch: nativeEpoch, previous: { key, title: track.title, artist: track.artist, coverUrl: track.coverUrl || null, filePath, url }, current: nativeCurrentSource });
+            await invoke(previousPrepareCommand, { epoch: nativeEpoch, previous: { key, title: track.title, artist: track.artist, coverUrl: track.coverUrl || null, filePath, url }, current: nativeCurrentSource });
           }
         } catch (error) { console.warn('[player] previous preparation failed', error); }
       }
@@ -480,7 +482,7 @@
       if ($waveActive) waveTrackDone(previous, (previous?.duration ?? 0) / 1000 || duration, 'finished');
       if (isScWaveTrack(previous)) refillSoundCloud = true;
       previous = candidate.track;
-      if (isIOS) nativeCurrentSource = candidate.source || null;
+      if (usesNativeMobileAudio) nativeCurrentSource = candidate.source || null;
       duration = advance.durationSecs || candidate.track.duration / 1000 || 0;
       lastBackgroundSequence = advance.sequence;
       changed = true;
@@ -495,9 +497,9 @@
     currentTime = 0;
     mobileDisplayTime = 0;
     progress.set(0);
-    if (isIOS) lastPlayStateSent = await invoke<boolean>('audio_is_playing');
+    if (usesNativeMobileAudio) lastPlayStateSent = await invoke<boolean>('audio_is_playing');
     currentTrack.set(previous);
-    isPlaying.set(isIOS ? lastPlayStateSent === true : true);
+    isPlaying.set(usesNativeMobileAudio ? lastPlayStateSent === true : true);
     await svelteTick();
   }
 
@@ -875,7 +877,7 @@
         .then(async status => {
           if (document.hidden) return;
           await syncBackgroundPlayback(status);
-          if (isIOS) {
+          if (usesNativeMobileAudio) {
             const playing = await invoke<boolean>('audio_is_playing');
             lastPlayStateSent = playing;
             isPlaying.set(playing);
@@ -953,8 +955,8 @@
       }
     }));
 
-    trackListener(listen('media:play', () => { if (isIOS) lastPlayStateSent = true; isPlaying.set(true); }));
-    trackListener(listen('media:pause', () => { if (isIOS) lastPlayStateSent = false; isPlaying.set(false); }));
+    trackListener(listen('media:play', () => { if (usesNativeMobileAudio) lastPlayStateSent = true; isPlaying.set(true); }));
+    trackListener(listen('media:pause', () => { if (usesNativeMobileAudio) lastPlayStateSent = false; isPlaying.set(false); }));
     trackListener(listen('media:toggle', () => isPlaying.update(p => !p)));
     trackListener(listen('media:next', () => playNext()));
     trackListener(listen('media:prev', () => playPrev()));
@@ -1148,7 +1150,7 @@
 
     const generation = ++loadGeneration;
     loadingGeneration = generation;
-    if (isIOS && get(isPlaying)) await invoke('audio_ios_begin_track');
+    if (usesNativeMobileAudio && get(isPlaying)) await invoke(isIOS ? 'audio_ios_begin_track' : 'audio_android_begin_track');
     if (mobile) {
       try { await invoke('audio_background_prepare', { epoch: backgroundEpochBase + generation, candidates: [] }); }
       catch (error) { console.warn('[player] background queue reset failed', error); }
@@ -1333,15 +1335,15 @@
     }
 
     loadPromise.then(async (res: any) => {
-      if (isIOS) {
+      if (usesNativeMobileAudio) {
         const filePath = isLocalFile ? localPath : await invoke<string | null>('track_get_cache_path', { urn }).catch(() => null);
         if (generation !== loadGeneration) return;
         nativeCurrentSource = { key: urn, title: currentTrackObj.title, artist: currentTrackObj.artist, coverUrl: currentTrackObj.coverUrl || null, filePath, url: /^https?:/i.test(safeUrl) ? safeUrl : null };
       }
-      const nativePlaying = isIOS ? await invoke<boolean>('audio_is_playing') : true;
+      const nativePlaying = usesNativeMobileAudio ? await invoke<boolean>('audio_is_playing') : true;
       if (mobile && generation !== loadGeneration) return;
       if (mobileLoadTimer) clearTimeout(mobileLoadTimer);
-      if (isIOS) { lastPlayStateSent = nativePlaying; isPlaying.set(nativePlaying); }
+      if (usesNativeMobileAudio) { lastPlayStateSent = nativePlaying; isPlaying.set(nativePlaying); }
       if (loadingGeneration === generation) loadingGeneration = null;
       // Эстафета передана (или загрузка кончилась ничем): уходящий трек с этого момента гаснет
       // сам по тику, и держать окно с флагом больше нельзя. Особенно окно: следующий трек может
@@ -1365,7 +1367,7 @@
       paintProgress();
       $isPlaying = nativePlaying;
       beginLastFmTrack(currentTrackObj, duration);
-      if (!isIOS) invoke('audio_play').catch(() => {});
+      if (!usesNativeMobileAudio) invoke('audio_play').catch(() => {});
 
       invoke('audio_set_metadata', {
         title: currentTrackObj.title,

@@ -81,6 +81,8 @@ pub async fn audio_load_url(
 
 #[tauri::command]
 pub fn audio_play(app: AppHandle, state: State<'_, AudioState>) {
+    #[cfg(target_os = "android")]
+    crate::android_playback_gate::request_play();
     #[cfg(target_os = "ios")]
     {
         crate::ios_media::request_play();
@@ -107,12 +109,28 @@ pub fn audio_ios_previous_prepare(epoch: u64, previous: Option<BackgroundTrack>,
 }
 
 #[tauri::command]
+pub fn audio_android_begin_track() {
+    #[cfg(target_os = "android")]
+    crate::android_playback_gate::request_play();
+}
+
+#[tauri::command]
+pub fn audio_android_previous_prepare(epoch: u64, previous: Option<BackgroundTrack>, current: Option<BackgroundTrack>) {
+    #[cfg(target_os = "android")]
+    background::prepare_previous(epoch, previous, current);
+    #[cfg(not(target_os = "android"))]
+    let _ = (epoch, previous, current);
+}
+
+#[tauri::command]
 pub async fn audio_prefetch_url(url: Option<String>) {
     super::prefetch::prepare(url);
 }
 
 #[tauri::command]
 pub fn audio_pause(app: AppHandle, state: State<'_, AudioState>) {
+    #[cfg(target_os = "android")]
+    crate::android_playback_gate::request_pause();
     #[cfg(target_os = "ios")]
     crate::ios_media::request_pause();
     engine::pause(&app, state);
@@ -230,7 +248,10 @@ pub fn audio_set_metadata(
     state: State<'_, AudioState>,
 ) {
     #[cfg(target_os = "android")]
-    crate::android_media::metadata(&title, &artist, cover_url.as_deref(), duration_secs);
+    {
+        crate::android_media::metadata(&title, &artist, cover_url.as_deref(), duration_secs);
+        crate::android_media::playback(engine::is_playing(state.clone()), engine::get_position(state.clone()));
+    }
     #[cfg(target_os = "ios")]
     {
         crate::ios_media::metadata(&title, &artist, cover_url.as_deref(), duration_secs);
