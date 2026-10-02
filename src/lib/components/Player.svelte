@@ -73,11 +73,12 @@
   function mobilePlayerTransition(node: Element, _params: unknown, options: { direction: 'in' | 'out' | 'both' }) {
     const reduced = $settings.mobileMotion === false || matchMedia('(prefers-reduced-motion: reduce)').matches;
     const duration = reduced ? 0 : options.direction === 'out' ? 360 : 480;
+    const distance = Math.max(0, node.clientHeight - Number.parseFloat((node as HTMLElement).style.getPropertyValue('--mobile-player-dismiss-y') || '0'));
     node.dispatchEvent(new CustomEvent('lomify:layout-motion', { bubbles: true, detail: { duration: duration + 20 } }));
     return {
       duration,
       easing: cubicOut,
-      css: (t: number) => `transform:translateY(${(1 - t) * Math.max(0, node.clientHeight - Number.parseFloat((node as HTMLElement).style.getPropertyValue('--mobile-player-dismiss-y') || '0'))}px);border-radius:${(1 - t) * 32}px`
+      css: (t: number) => `transform:translate3d(0,${(1 - t) * distance}px,0)`
     };
   }
   function manageMobilePanel(node: HTMLElement, open: boolean) {
@@ -1580,8 +1581,8 @@
 {#if mobile}
   {#if $currentTrack}
     {#if mobileExpanded}
-    <div class="mobile-player expanded mobile-now-panel" class:show-lyrics={mobileShowLyrics} class:ios-swipe-player={isIOS} inert={!mobileExpanded} aria-hidden={!mobileExpanded} role="region" aria-label="Сейчас играет" use:mobileSwipeDismiss={closeMobilePlayer} use:mobileSwipeBack={true} use:manageMobilePanel={mobileExpanded} use:mobilePlayerArtwork use:mobileHold={{ onHold: () => mobileTrackMenu.set($currentTrack) }} transition:mobilePlayerTransition>
-        <MobileVideoBackdrop track={$currentTrack} coverUrl={currentDisplayCover} active={$isPlaying && (!mobileShowLyrics || $settings.mobileLyricsVideoBackground !== false)} variant="player" />
+    <div class="mobile-player expanded mobile-now-panel" class:show-lyrics={mobileShowLyrics} class:ios-swipe-player={isIOS} inert={!mobileExpanded} aria-hidden={!mobileExpanded} role="region" aria-label="Сейчас играет" use:mobileSwipeDismiss={closeMobilePlayer} use:mobileSwipeBack={true} use:manageMobilePanel={mobileExpanded} use:mobilePlayerArtwork use:mobileHold={{ onHold: () => mobileTrackMenu.set($currentTrack) }} transition:mobilePlayerTransition on:introstart={(event) => event.currentTarget?.dispatchEvent(new CustomEvent('lomify:layout-motion', { bubbles: true, detail: { duration: $settings.mobileMotion === false || mobileReducedMotion ? 0 : 500 } }))}>
+        <MobileVideoBackdrop track={$currentTrack} coverUrl={currentDisplayCover} active={$isPlaying && mobileDetailsReady && (!mobileShowLyrics || $settings.mobileLyricsVideoBackground !== false)} variant="player" />
         <div class="mobile-now-shade" aria-hidden="true"></div>
         <div class="mobile-now-header">
           <button class="mobile-now-dismiss" aria-label="Свернуть плеер" on:click={closeMobilePlayer}><span aria-hidden="true"></span></button>

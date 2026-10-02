@@ -5,6 +5,7 @@
 .ios-swipe-player .mobile-now-artwork, .ios-swipe-player .mobile-now-track-heading { touch-action: pan-x; }
 .mobile-app[data-motion="off"] .ios-swipe-player { transition: none; }
 .mobile-app [data-ios-glass-ready="true"] { opacity: 0 !important; pointer-events: none; }
+.mobile-app [data-ios-glass-owned="true"] { transition-property: transform, background-color, color; }
 body[data-mobile="true"] {
   --mobile-bg: #101014;
   --mobile-surface: #1c1c23;
@@ -922,10 +923,16 @@ body[data-ios-scroll="artist"]:has(.mobile-player.expanded:not([inert]), dialog[
 
 /* The artwork and the lyrics are two states of one player, with controls
    anchored below. Only transforms/opacity change during the transition. */
-.mobile-app .mobile-now-artwork { position: absolute; top: 50%; left: 50%; z-index: 0; display: grid; place-items: center; width: var(--player-art-size, 280px); height: var(--player-art-size, 280px); padding: 0; overflow: hidden; border-radius: 14px; background: var(--mobile-surface); color: var(--mobile-muted); outline: 1px solid rgb(255 255 255 / .1); transform: translate(-50%, -50%); opacity: 1; transition: transform 620ms cubic-bezier(0.22, 1, 0.36, 1), opacity 620ms ease, border-radius 620ms ease; }
+.mobile-app .mobile-now-artwork { position: absolute; top: 50%; left: 50%; z-index: 0; display: grid; place-items: center; width: var(--player-art-size, 280px); height: var(--player-art-size, 280px); padding: 0; overflow: hidden; border-radius: 14px; background: var(--mobile-surface); color: var(--mobile-muted); outline: 1px solid rgb(255 255 255 / .1); transform: translate(-50%, -50%); opacity: 1; filter: blur(0); transition: transform 620ms cubic-bezier(0.22, 1, 0.36, 1), opacity 460ms ease, filter 420ms ease; }
 .mobile-now-artwork img { width: 100%; height: 100%; object-fit: cover; }
 .mobile-app .mobile-now-artwork:active:not(:disabled) { transform: translate(-50%, -50%) scale(.96); }
-.mobile-now-artwork.is-background { transform: translate(calc(-50% + var(--player-art-shift-x, 0px)), calc(-50% + var(--player-art-shift, 0px))) scale(var(--player-art-scale, 3)); border-radius: 0; opacity: .22; pointer-events: none; }
+.mobile-app .mobile-now-artwork.is-background { transform: translate(calc(-50% + var(--player-art-shift-x, 0px)), calc(-50% + var(--player-art-shift, 0px))) scale(var(--player-art-scale, 3)); filter: blur(12px); opacity: 0; pointer-events: none; }
+.mobile-now-panel .mobile-now-shade { transition: opacity 620ms ease; }
+.mobile-now-panel.show-lyrics .mobile-now-shade { opacity: .78; }
+.mobile-library .mobile-playlist-detail-head { display: flex; flex-direction: column; gap: 18px; align-items: center; margin: 8px 0 24px; text-align: center; }
+.mobile-library .mobile-playlist-detail-cover { width: min(58vw, 224px); height: min(58vw, 224px); border-radius: 18px; outline: 1px solid rgb(255 255 255 / .1); }
+.mobile-library .mobile-playlist-detail-head h1 { font-size: 26px; font-weight: 700; letter-spacing: -.025em; }
+.mobile-liked-cover { color: #fff; background: linear-gradient(145deg, color-mix(in srgb, var(--color-primary, #ff884d) 75%, #36101b), color-mix(in srgb, var(--color-primary, #ff884d) 34%, #21121b)); }
 .mobile-now-panel .mobile-now-art > img { opacity: .3; }
 .mobile-now-panel .mobile-now-header { min-height: 32px; }
 .mobile-now-panel .mobile-now-track-heading { position: relative; grid-template-columns: minmax(0, 1fr) 44px 44px; min-height: 76px; transform: translateY(0); transition: transform 620ms cubic-bezier(0.22, 1, 0.36, 1); }
@@ -942,7 +949,10 @@ body[data-ios-scroll="artist"]:has(.mobile-player.expanded:not([inert]), dialog[
 .mobile-now-panel .mobile-now-middle > .mobile-now-lyrics.is-visible { opacity: 1; visibility: visible; transform: none; pointer-events: auto; transition: opacity 440ms ease-out 160ms, transform 620ms cubic-bezier(.22, 1, .36, 1), visibility 0s; }
 .mobile-now-panel .mobile-now-controls { border: 0; background: transparent; box-shadow: none; }
 .mobile-now-panel .mobile-now-controls .mobile-icon-button { background: transparent; }
-.mobile-now-panel .mobile-now-controls .mobile-icon-button svg { width: 34px; height: 34px; stroke-width: 1; }
+.mobile-now-panel .mobile-now-controls .mobile-icon-button svg { width: 30px; height: 30px; stroke-width: 1; }
+.mobile-now-panel .mobile-play-large svg { width: 43px; height: 43px; }
+.mobile-now-panel .mobile-now-track-heading .mobile-icon-button svg, .mobile-now-panel .mobile-now-extra-group .mobile-icon-button svg { width: 20px; height: 20px; }
+.mobile-now-panel .mobile-icon-button[aria-pressed="true"] { color: #fff; background: rgb(255 255 255 / .14); }
 .mobile-now-panel .mobile-play-large { width: 76px; height: 76px; flex-basis: 76px; }
 .mobile-player:not(.expanded) { border-radius: 30px; padding: 4px 8px; }
 .mobile-player:not(.expanded) .mobile-icon-button { width: 44px; min-width: 44px; background: transparent; }

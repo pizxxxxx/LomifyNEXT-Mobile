@@ -101,8 +101,8 @@
     if (isIOS) {
       nativeObserver = new MutationObserver(records => { if (hasIOSOverlayChange(records)) scheduleNativeVisibility(); });
       nativeObserver.observe(document.body, { subtree: true, childList: true, attributes: true, attributeFilter: ['class', 'inert', 'hidden', 'open', 'aria-modal'] });
-      document.addEventListener('focusin', updateNativeVisibility);
-      document.addEventListener('focusout', updateNativeVisibility);
+      document.addEventListener('focusin', scheduleNativeVisibility);
+      document.addEventListener('focusout', scheduleNativeVisibility);
       updateNativeVisibility();
       void listen<string>('ios:navigation', event => {
         const tab = tabs.find(tab => tab.id === event.payload);
@@ -159,8 +159,8 @@
       nativeUnlisten();
       nativeObserver?.disconnect();
       cancelAnimationFrame(visibilityFrame);
-      document.removeEventListener('focusin', updateNativeVisibility);
-      document.removeEventListener('focusout', updateNativeVisibility);
+      document.removeEventListener('focusin', scheduleNativeVisibility);
+      document.removeEventListener('focusout', scheduleNativeVisibility);
       if (nativeNavigationReady) void invoke('ios_navigation_update', { index: 0, visible: false, tint: [1, .533, .302] }).catch(console.warn);
       document.removeEventListener('visibilitychange', checkOnResume);
       release();

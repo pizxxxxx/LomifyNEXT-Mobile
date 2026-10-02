@@ -6,7 +6,8 @@ import { hasIOSOverlayChange } from '$lib/utils/iosOverlayChanges';
 type Options = { symbol: string; prominent?: boolean; selected?: boolean; iconSize?: number; style?: 'glass' | 'plain' };
 type Record = { node: HTMLButtonElement; options: Options; originalHidden: string | null };
 const controls = new Map<string, Record>();
-let sequence = 0, frame = 0, motionUntil = 0;
+let sequence = 0, frame = 0;
+const moving = new Map<Element, ReturnType<typeof setTimeout>>();
 let lastPayload = '', sending = false;
 let observer: MutationObserver | undefined, resizeObserver: ResizeObserver | undefined;
 let releaseEvents = () => {};
@@ -21,11 +22,29 @@ function schedule() { if (!frame) frame = requestAnimationFrame(flush); }
 function affectsControls(target: EventTarget | null) {
   return target instanceof Element && [...controls.values()].some(record => target.contains(record.node));
 }
+function isMoving(node: Element) {
+  return [...moving.keys()].some(target => target.contains(node));
+}
 function trackMotion(event: Event) {
   const target = event.target instanceof Element ? event.target : null;
   if (!target || !affectsControls(event.type.startsWith('pointer') ? target.closest('.ios-swipe-player') : target)) return;
-  motionUntil = performance.now() + (event instanceof CustomEvent ? event.detail?.duration ?? 280 : 280);
-  schedule();
+  if (event.type.startsWith('pointer') && !target.closest('[data-swipe-dragging], [data-edge-back]')) return;
+  if (event.type === 'transitionrun' && !['transform', 'translate', 'scale', 'rotate', 'top', 'left', 'width', 'height'].includes((event as TransitionEvent).propertyName)) return;
+  if (event instanceof CustomEvent && event.detail?.duration === 0) return;
+  let duration = event instanceof CustomEvent ? Number(event.detail?.duration ?? 280) : 280;
+  if (event.type === 'transitionrun') {
+    const style = getComputedStyle(target);
+    const milliseconds = (value: string) => Number.parseFloat(value) * (value.trim().endsWith('ms') ? 1 : 1000) || 0;
+    const delays = (style.transitionDelay || '0s').split(',').map(milliseconds);
+    duration = Math.max(duration, ...(style.transitionDuration || '0s').split(',').map((value, index) => milliseconds(value) + delays[index % delays.length]));
+  }
+  const previous = moving.get(target);
+  if (previous) clearTimeout(previous);
+  moving.set(target, setTimeout(() => { moving.delete(target); schedule(); }, Math.max(0, duration) + 32));
+  // During motion the original buttons share WebKit's composited surface.
+  // Restore UIKit once it settles, instead of sampling geometry every frame.
+  controls.forEach(record => { if (target.contains(record.node)) markReady(record, false); });
+  if (!previous) schedule();
 }
 function onScroll(event: Event) {
   // Artist controls are children of the same native scroll view. UIKit moves
@@ -39,7 +58,7 @@ function onMotionEnd(event: Event) {
   schedule();
 }
 function onVisibility() {
-  motionUntil = 0;
+  moving.forEach(timer => clearTimeout(timer)); moving.clear();
   if (document.hidden) { cancelAnimationFrame(frame); frame = 0; }
   else schedule();
 }
@@ -78,7 +97,7 @@ function flush() {
   const clips = new Map<HTMLElement, DOMRect>();
   const buttons = [...controls].flatMap(([id, record]) => {
     const node = record.node;
-    if (modal || !node.isConnected || node.closest('[inert], [hidden]') || !node.getClientRects().length) return [];
+    if (modal || !node.isConnected || isMoving(node) || node.closest('[inert], [hidden]') || !node.getClientRects().length) return [];
     const rect = node.getBoundingClientRect();
     const rootScroll = rootMode && !!node.closest('.mobile-artist-pane');
     if (!rect.width || !rect.height || !rootScroll && (rect.bottom < 0 || rect.top > innerHeight)) return [];
@@ -117,11 +136,10 @@ function flush() {
       .then(ready => {
         bridgeReady = ready;
         const active = new Set(buttons.map(button => button.id));
-        controls.forEach((record, id) => markReady(record, ready && active.has(id)));
+        controls.forEach((record, id) => markReady(record, ready && active.has(id) && !isMoving(record.node)));
       }).catch(error => { controls.forEach(record => markReady(record, false)); console.warn('[iOS glass controls]', error); })
       .finally(() => { sending = false; schedule(); });
   }
-  if (performance.now() < motionUntil && controls.size) schedule();
 }
 function start() {
   const current = ++generation;
@@ -164,6 +182,7 @@ function stop() {
   document.removeEventListener('transitionend', onMotionEnd, true);
   document.removeEventListener('animationend', onMotionEnd, true);
   cancelAnimationFrame(frame); frame = 0;
+  moving.forEach(timer => clearTimeout(timer)); moving.clear();
   // Empty snapshots remove native controls after their Svelte owners disappear.
   schedule();
 }
@@ -174,6 +193,7 @@ export function iosGlassButton(node: HTMLButtonElement, options: Options) {
   if (!controls.size) start();
   const id = `ios-glass-${++sequence}`;
   const record = { node, options, originalHidden: node.getAttribute('aria-hidden') };
+  node.dataset.iosGlassOwned = 'true';
   controls.set(id, record);
   resizeObserver?.observe(node);
   schedule();
@@ -181,6 +201,7 @@ export function iosGlassButton(node: HTMLButtonElement, options: Options) {
     update(next: Options) { record.options = next; schedule(); },
     destroy() {
       markReady(record, false);
+      delete node.dataset.iosGlassOwned;
       resizeObserver?.unobserve(node);
       controls.delete(id);
       if (!controls.size) stop(); else schedule();

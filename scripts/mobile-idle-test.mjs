@@ -5,6 +5,7 @@ import vm from 'node:vm';
 import ts from 'typescript';
 let now = 0, sequence = 0, reads = 0, bounds = 0;
 const frames = new Map(), listeners = new Map(), nativeCalls = [];
+const timers = new Map();
 const pending = [];
 let holdCalls = false;
 class Element {
@@ -55,7 +56,8 @@ const environment = { Element, CustomEvent, document, window, MutationObserver, 
   performance: { now: () => now },
   getComputedStyle: () => ({ getPropertyValue: () => '#ff884d' }),
   requestAnimationFrame: fn => { const id = ++sequence; frames.set(id, fn); return id; },
-  cancelAnimationFrame: id => frames.delete(id), console
+  cancelAnimationFrame: id => frames.delete(id), console,
+  setTimeout: fn => { const id = ++sequence; timers.set(id, fn); return id; }, clearTimeout: id => timers.delete(id)
 };
 function load(file, imports = {}) {
   const exports = {};
@@ -145,12 +147,27 @@ delete window.webkit;
 
 panel.className = 'mobile-player expanded ios-swipe-player';
 mutations([attribute(panel, 'class')]); await flush();
-bounds = 0; dispatch('pointermove', panel); await flush(); assert(bounds > 2);
+const beforeOpacity = nativeCalls.length;
+for (const fn of listeners.get('transitionrun') ?? []) fn({ type: 'transitionrun', target: button, propertyName: 'opacity' });
+await flush();
+assert.equal(nativeCalls.length, beforeOpacity, 'Handing opacity between UIKit and DOM must never start another handoff');
+panel.setAttribute('data-swipe-dragging', 'true');
+bounds = 0; dispatch('pointermove', panel); await flush();
+assert(!button.hasAttribute('data-ios-glass-ready'));
+assert.equal(nativeCalls.at(-1).buttons.length, 1, 'Only the moving player hands controls back to WebKit');
+const readsDuringMotion = bounds, callsDuringMotion = nativeCalls.length;
+for (let i = 0; i < 600; i++) dispatch('pointermove', panel);
+await flush();
+assert.equal(bounds, readsDuringMotion, 'Moving player buttons must not sample their bounds');
+assert.equal(nativeCalls.length, callsDuringMotion, 'Motion must not stream native geometry');
+assert.equal(frames.size, 0, 'No repeating frame loop during player motion');
+const settle = [...timers.values()]; timers.clear(); settle.forEach(fn => fn()); await flush();
+assert(button.hasAttribute('data-ios-glass-ready'), 'Native controls return after motion settles');
 assert.equal(reads, 0, 'Player dragging must not repeat GPU color readback');
 document.hidden = true; dispatch('visibilitychange', body); dispatch('pointermove', panel); await flush();
 assert.equal(frames.size, 0);
 document.hidden = false; dispatch('visibilitychange', body); await flush();
-console.log('PASS expanded-player motion follows controls; hidden pages remain idle');
+console.log('PASS 600 player-motion events: no geometry stream; native controls return once settled; hidden pages remain idle');
 artistAction.destroy(); await flush();
 holdCalls = true; action.update({ symbol: 'pause' }); await flush();
 action.destroy(); await flush();
