@@ -222,6 +222,7 @@
     <div class="mobile-preference-label"><span>Подсветка текста</span><small>Режим для текста в плеере</small></div>
     <div class="mobile-source-options" role="group" aria-label="Подсветка текста"><button aria-pressed={!$settings.mobileLyricsLetterSync} onclick={() => settings.update(s => ({ ...s, mobileLyricsLetterSync: false }))}>По строкам</button><button aria-pressed={$settings.mobileLyricsLetterSync} onclick={() => settings.update(s => ({ ...s, mobileLyricsLetterSync: true }))}>По буквам</button></div>
     <label class="mobile-preference-row"><span><strong>Эдлибы</strong><small>Показывать фразы в скобках отдельно</small></span><input class="mobile-toggle" type="checkbox" role="switch" bind:checked={$settings.lyricsAdlibs} /></label>
+    {#if $settings.lyricsAdlibs}<label class="mobile-preference-row"><span><strong>Сдвиг эдлибов</strong><small>Отдельно от основных строк: {$settings.lyricsAdlibOffset || 0} мс</small></span><input type="range" min="-1500" max="1500" step="50" bind:value={$settings.lyricsAdlibOffset} aria-label="Сдвиг эдлибов в миллисекундах" /></label>{/if}
     <label class="mobile-preference-row"><span><strong>Сдвиг текста</strong><small>Если подсветка опережает или отстаёт: {$settings.lyricsOffset} мс</small></span><input type="range" min="-1000" max="1000" step="50" bind:value={$settings.lyricsOffset} aria-label="Сдвиг текста в миллисекундах" /></label>
   </div>
     </section>

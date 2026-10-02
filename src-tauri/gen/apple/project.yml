@@ -52,8 +52,8 @@ targets:
           - UIInterfaceOrientationPortraitUpsideDown
           - UIInterfaceOrientationLandscapeLeft
           - UIInterfaceOrientationLandscapeRight
-        CFBundleShortVersionString: 1.0.23
-        CFBundleVersion: "10016"
+        CFBundleShortVersionString: 1.0.24
+        CFBundleVersion: "10017"
     entitlements:
       path: lomifynext-tauri_iOS/lomifynext-tauri_iOS.entitlements
     scheme:

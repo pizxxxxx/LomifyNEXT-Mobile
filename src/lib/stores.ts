@@ -82,6 +82,7 @@ const defaultSettings = {
   spotifyUser: null as { id: string, accountId: string, displayName: string, avatarUrl: string, externalUrl: string } | null,
   lyricsAlignment: 'right', // 'left' | 'right' | 'fullscreen'
   lyricsOffset: 0, // ms offset for synced lyrics
+  lyricsAdlibOffset: 0,
   lyricsAdlibs: true, // Show parenthesized ad-libs separately from mobile lyric lines.
   uiStyle: 'style1', // 'style1' | 'style2'
   // Оконная рамка Tauri выключена, поэтому оба варианта рисуются самим Lomify.

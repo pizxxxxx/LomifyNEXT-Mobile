@@ -7,6 +7,8 @@ typedef void (*LomifyControlPressed)(const char *);
 @interface LomifyGlassButton : UIButton
 @property(nonatomic, copy) NSString *controlId;
 @property(nonatomic, copy) NSString *configurationKey;
+@property(nonatomic, copy) NSString *symbol;
+@property(nonatomic, strong) UIImageView *outgoingSymbol;
 @end
 @implementation LomifyGlassButton
 @end
@@ -71,6 +73,7 @@ typedef void (*LomifyControlPressed)(const char *);
     WKWebView *webView = self.webView;
     if (!webView.window || viewportWidth <= 0) return;
     if (@available(iOS 26.0, *)) {
+        NSMutableArray<LomifyGlassButton *> *symbolChanges = [NSMutableArray new];
         [UIView performWithoutAnimation:^{
             [CATransaction begin];
             [CATransaction setDisableActions:YES];
@@ -100,6 +103,13 @@ typedef void (*LomifyControlPressed)(const char *);
                 BOOL plain = [item[@"style"] isEqualToString:@"plain"];
                 NSString *key = [NSString stringWithFormat:@"%@/%@/%@/%d/%d/%d", symbol, item[@"iconSize"], tint, prominent, selected, plain];
                 if (![button.configurationKey isEqualToString:key]) {
+                    BOOL transportChange = ([button.symbol isEqualToString:@"play.fill"] && [symbol isEqualToString:@"pause.fill"]) ||
+                        ([button.symbol isEqualToString:@"pause.fill"] && [symbol isEqualToString:@"play.fill"]);
+                    UIImage *oldImage = button.imageView.image;
+                    [button.outgoingSymbol removeFromSuperview];
+                    [button.imageView.layer removeAllAnimations];
+                    button.imageView.transform = CGAffineTransformIdentity;
+                    button.imageView.alpha = 1;
                     UIButtonConfiguration *configuration = plain ? UIButtonConfiguration.plainButtonConfiguration : prominent ? UIButtonConfiguration.prominentGlassButtonConfiguration : UIButtonConfiguration.glassButtonConfiguration;
                     configuration.cornerStyle = UIButtonConfigurationCornerStyleCapsule;
                     configuration.image = [UIImage systemImageNamed:symbol];
@@ -110,6 +120,16 @@ typedef void (*LomifyControlPressed)(const char *);
                     button.tintColor = accent;
                     button.configuration = configuration;
                     button.configurationKey = key;
+                    button.symbol = symbol;
+                    if (transportChange && [item[@"animate"] boolValue] && !UIAccessibilityIsReduceMotionEnabled()) {
+                        UIImageView *ghost = [[UIImageView alloc] initWithImage:oldImage];
+                        ghost.contentMode = UIViewContentModeScaleAspectFit;
+                        ghost.tintColor = UIColor.whiteColor;
+                        ghost.userInteractionEnabled = NO;
+                        button.outgoingSymbol = ghost;
+                        [button addSubview:ghost];
+                        [symbolChanges addObject:button];
+                    }
                 }
                 // Content controls belong to the actual native scrolling
                 // coordinate space; fixed player controls stay in the overlay.
@@ -121,6 +141,12 @@ typedef void (*LomifyControlPressed)(const char *);
                 button.enabled = [item[@"enabled"] boolValue];
                 button.selected = selected;
                 button.accessibilityLabel = item[@"label"];
+                [button layoutIfNeeded];
+                if ([symbolChanges containsObject:button]) {
+                    button.outgoingSymbol.frame = button.imageView.frame;
+                    button.imageView.alpha = 0;
+                    button.imageView.transform = CGAffineTransformMakeScale(.25, .25);
+                }
                 [activeIds addObject:identifier];
             }
             for (NSString *identifier in self.buttons.allKeys) {
@@ -132,6 +158,21 @@ typedef void (*LomifyControlPressed)(const char *);
             [self layoutIfNeeded];
             [CATransaction commit];
         }];
+        // Geometry updates stay instantaneous. The icon has its own native,
+        // interruptible animation, independent of WebKit loading or scrolling.
+        for (LomifyGlassButton *button in symbolChanges) {
+            UIImageView *ghost = button.outgoingSymbol;
+            [UIView animateWithDuration:.3 delay:0 options:UIViewAnimationOptionCurveEaseOut | UIViewAnimationOptionBeginFromCurrentState | UIViewAnimationOptionAllowUserInteraction animations:^{
+                button.imageView.alpha = 1;
+                button.imageView.transform = CGAffineTransformIdentity;
+                ghost.alpha = 0;
+                ghost.transform = CGAffineTransformMakeScale(.25, .25);
+            } completion:^(BOOL finished) {
+                (void)finished;
+                [ghost removeFromSuperview];
+                if (button.outgoingSymbol == ghost) button.outgoingSymbol = nil;
+            }];
+        }
     }
 }
 @end

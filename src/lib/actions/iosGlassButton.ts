@@ -95,6 +95,7 @@ function flush() {
     return [{ id, symbol: record.options.symbol, prominent: record.options.prominent === true,
       selected: record.options.selected === true, iconSize: record.options.iconSize ?? 20,
       style: record.options.style ?? 'glass', rootScroll,
+      animate: !document.querySelector('.mobile-app[data-motion="off"]'),
       label: node.getAttribute('aria-label') || '', enabled: !node.disabled, tint: accent,
       x: Math.round(rect.x * 10) / 10, y: Math.round((rect.y + (rootScroll ? scrollY : 0)) * 10) / 10,
       width: rect.width, height: rect.height, clipX, clipY, clipWidth: clipRight - clipX, clipHeight: clipBottom - clipY }];

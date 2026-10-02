@@ -22,9 +22,11 @@ export function coverUrlAtSize(url: string, requestedSize: number): string {
   const size = Math.max(32, Math.min(1000, Math.round(requestedSize)));
 
   if (url.includes('avatars.yandex.net') || url.includes('.yandex.net/get-music-content')) {
+    // The CDN has named presets, not arbitrary dimensions (240x240 can 404).
+    const preset = [100, 200, 400, 1000].find(value => value >= size) ?? 1000;
     return url
-      .replace('%%', `${size}x${size}`)
-      .replace(/\/\d+x\d+(?=($|[?#]))/, `/${size}x${size}`);
+      .replace('%%', `${preset}x${preset}`)
+      .replace(/\/\d+x\d+(?=($|[?#]))/, `/${preset}x${preset}`);
   }
 
   if (url.includes('sndcdn.com')) {
@@ -75,6 +77,11 @@ export function handleArtworkError(event: Event, remoteUrl: string, size?: numbe
     image.src = fallback;
     return;
   }
+  if (image.dataset.cdnFallback !== '1' && remoteUrl && image.src !== remoteUrl) {
+    image.dataset.cdnFallback = '1';
+    image.src = remoteUrl;
+    return;
+  }
   image.hidden = true;
 }
 
@@ -83,6 +90,7 @@ export function handleArtworkLoad(event: Event): void {
   if (!image) return;
   image.hidden = false;
   delete image.dataset.remoteFallback;
+  delete image.dataset.cdnFallback;
 }
 
 /** Initialize the native proxy port and keep the synchronous URN set current. */

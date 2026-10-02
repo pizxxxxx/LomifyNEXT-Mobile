@@ -38,6 +38,8 @@ pub struct BackgroundAdvance {
     pub sequence: u64,
     pub key: String,
     pub duration_secs: Option<f64>,
+    #[cfg(target_os = "ios")]
+    pub previous: bool,
 }
 
 #[derive(Default)]
@@ -46,6 +48,10 @@ struct BackgroundState {
     hidden: bool,
     #[cfg(any(target_os = "android", target_os = "ios"))]
     candidates: VecDeque<BackgroundTrack>,
+    #[cfg(target_os = "ios")]
+    previous: Option<BackgroundTrack>,
+    #[cfg(target_os = "ios")]
+    current: Option<BackgroundTrack>,
     status: BackgroundStatus,
 }
 
@@ -87,6 +93,30 @@ pub fn status() -> BackgroundStatus {
     state().lock().unwrap().status.clone()
 }
 
+#[cfg(target_os = "ios")]
+pub fn prepare_previous(epoch: u64, previous: Option<BackgroundTrack>, current: Option<BackgroundTrack>) {
+    let mut background = state().lock().unwrap();
+    if background.status.epoch != epoch || background.status.loading || !background.status.advances.is_empty() { return; }
+    background.previous = previous;
+    background.current = current;
+}
+
+#[cfg(target_os = "ios")]
+pub fn is_hidden() -> bool { state().lock().unwrap().hidden }
+
+#[cfg(target_os = "ios")]
+pub fn try_previous(app: &AppHandle) -> bool {
+    let (epoch, candidate) = {
+        let mut background = state().lock().unwrap();
+        if !background.hidden || background.status.loading { return false; }
+        let Some(candidate) = background.previous.take() else { return false; };
+        background.status.loading = true;
+        (background.status.epoch, candidate)
+    };
+    load_candidate(app, epoch, candidate, true);
+    true
+}
+
 /// Returns true only when Rust took responsibility for this end event.
 #[cfg(any(target_os = "android", target_os = "ios"))]
 pub fn try_advance(app: &AppHandle) -> bool {
@@ -101,6 +131,14 @@ pub fn try_advance(app: &AppHandle) -> bool {
         background.status.loading = true;
         (background.status.epoch, candidate)
     };
+    load_candidate(app, epoch, candidate, false);
+    true
+}
+
+#[cfg(any(target_os = "android", target_os = "ios"))]
+fn load_candidate(app: &AppHandle, epoch: u64, candidate: BackgroundTrack, previous: bool) {
+    #[cfg(not(target_os = "ios"))]
+    let _ = previous;
     let app = app.clone();
     tauri::async_runtime::spawn(async move {
         let cache_dir = app
@@ -150,12 +188,21 @@ pub fn try_advance(app: &AppHandle) -> bool {
                     return;
                 }
                 background.status.loading = false;
+                #[cfg(target_os = "ios")]
+                {
+                    let old = background.current.replace(candidate.clone());
+                    if previous {
+                        if let Some(old) = old { background.candidates.push_front(old); }
+                    } else { background.previous = old; }
+                }
                 background.status.sequence += 1;
                 let sequence = background.status.sequence;
                 background.status.advances.push(BackgroundAdvance {
                     sequence,
                     key: candidate.key.clone(),
                     duration_secs: duration,
+                    #[cfg(target_os = "ios")]
+                    previous,
                 });
                 let status = background.status.clone();
                 drop(background);
@@ -172,7 +219,7 @@ pub fn try_advance(app: &AppHandle) -> bool {
                 #[cfg(target_os = "ios")]
                 {
                     crate::ios_media::metadata(&candidate.title, &candidate.artist, candidate.cover_url.as_deref(), duration.unwrap_or(0.0));
-                    crate::ios_media::playback(true, 0.0, 1.0);
+                    crate::ios_media::playback(engine::is_playing(app.state::<AudioState>()), 0.0, 1.0);
                 }
                 let _ = app.emit("audio:background-advanced", status);
             }
@@ -193,5 +240,4 @@ pub fn try_advance(app: &AppHandle) -> bool {
             }
         }
     });
-    true
 }

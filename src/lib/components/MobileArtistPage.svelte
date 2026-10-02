@@ -174,7 +174,7 @@
 
   {#if featuredAlbum && !openAlbum}
     <button type="button" class="mobile-artist-featured" onclick={() => void showAlbum(featuredAlbum)}>
-      <span class="mobile-artist-featured-art">{#if featuredAlbum.coverUrl}<img src={coverUrlAtSize(featuredAlbum.coverUrl, 240)} alt="" loading="lazy" decoding="async" />{:else}<Disc3 size={32} aria-hidden="true" />{/if}</span>
+      <span class="mobile-artist-featured-art">{#if featuredAlbum.coverUrl}<Disc3 size={32} aria-hidden="true" /><img src={coverUrlAtSize(featuredAlbum.coverUrl, 240)} alt="" loading="lazy" decoding="async" onerror={(event) => handleArtworkError(event, featuredAlbum.coverUrl, 240)} onload={handleArtworkLoad} />{:else}<Disc3 size={32} aria-hidden="true" />{/if}</span>
       <span class="mobile-artist-featured-copy"><small>{featuredAlbum.year || 'Релиз исполнителя'}</small><strong>{featuredAlbum.title}</strong><small>{featuredAlbum.trackCount === 1 ? 'Сингл' : 'Альбом'}</small></span>
       <ChevronLeft class="mobile-artist-featured-arrow" size={21} aria-hidden="true" />
     </button>
@@ -214,7 +214,7 @@
     <div class="mobile-artist-album-detail" use:mobileReveal={String(openAlbum.id)}>
       <button type="button" class="mobile-artist-back" onclick={closeAlbum}><ChevronLeft size={19} aria-hidden="true" /> Все релизы</button>
       <div class="mobile-artist-album-head">
-        <span class="mobile-artist-album-art">{#if openAlbum.coverUrl}<img src={coverUrlAtSize(openAlbum.coverUrl, 240)} alt="" loading="lazy" decoding="async" />{:else}<Disc3 size={34} aria-hidden="true" />{/if}</span>
+        <span class="mobile-artist-album-art">{#if openAlbum.coverUrl}<Disc3 size={32} aria-hidden="true" /><img src={coverUrlAtSize(openAlbum.coverUrl, 240)} alt="" loading="lazy" decoding="async" onerror={(event) => handleArtworkError(event, openAlbum.coverUrl, 240)} onload={handleArtworkLoad} />{:else}<Disc3 size={34} aria-hidden="true" />{/if}</span>
         <div><h3>{openAlbum.title}</h3><p>{openAlbum.year || 'Релиз'}{#if openAlbum.trackCount} · {openAlbum.trackCount} треков{/if}</p><button class="mobile-secondary" disabled={!albumTracks?.length} onclick={playAlbum}><Play size={17} fill="currentColor" aria-hidden="true" /> Слушать</button></div>
       </div>
       {#if albumTracks === null}<div class="mobile-artist-status" role="status"><Loader2 size={22} class="animate-spin" /> Загружаем релиз</div>
@@ -229,7 +229,7 @@
     <div class="mobile-artist-album-grid" use:mobileReveal={true}>
       {#each albums as album (album.id)}
         <button type="button" class="mobile-artist-album" onclick={() => showAlbum(album)}>
-          <span class="mobile-artist-album-art">{#if album.coverUrl}<img src={coverUrlAtSize(album.coverUrl, 300)} alt="" loading="lazy" decoding="async" />{:else}<Disc3 size={35} aria-hidden="true" />{/if}</span>
+          <span class="mobile-artist-album-art">{#if album.coverUrl}<Disc3 size={32} aria-hidden="true" /><img src={coverUrlAtSize(album.coverUrl, 300)} alt="" loading="lazy" decoding="async" onerror={(event) => handleArtworkError(event, album.coverUrl, 300)} onload={handleArtworkLoad} />{:else}<Disc3 size={35} aria-hidden="true" />{/if}</span>
           <strong>{album.title}</strong><small>{album.year || ''}{#if album.trackCount} · {album.trackCount} треков{/if}</small>
         </button>
       {/each}

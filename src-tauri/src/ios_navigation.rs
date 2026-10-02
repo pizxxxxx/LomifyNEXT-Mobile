@@ -52,6 +52,8 @@ pub struct GlassButton {
     height: f64,
     icon_size: f64,
     style: String,
+    #[serde(default)]
+    animate: bool,
     root_scroll: bool,
     clip_x: f64,
     clip_y: f64,

@@ -6,6 +6,7 @@
   import { Loader2, AlignLeft } from '@lucide/svelte';
   import { invoke } from '@tauri-apps/api/core';
   import { fade } from 'svelte/transition';
+  import { extractAdlibs, buildAdlibTimeline, activeAdlibAt, stripLyricTimestamps, type AdlibItem, type AdlibCue } from '$lib/lyricAdlibs';
   import { settings } from '$lib/stores';
   import MobileVideoBackdrop from './MobileVideoBackdrop.svelte';
 
@@ -13,12 +14,7 @@
   export let letterSync = true;
   export let mobileMode = false;
   export let embedded = false;
-
-  interface AdlibItem {
-    text: string;
-    isPrefix: boolean;
-    triggerThreshold: number;
-  }
+  export let active = true;
 
   interface LyricLine {
     time: number;
@@ -37,30 +33,6 @@
   const HYPHEN_CHARS = new Set(['-', '—', '–']);
   interface CharWindow { start: number; end: number }
   const lineWindowsCache = new Map<number, CharWindow[]>();
-  const ADLIB_OFFSET_SECONDS = 0.75;
-  const ADLIB_VISIBLE_SECONDS = 2.8;
-
-  function extractAdlibs(text: string): { mainText: string; adlibs: AdlibItem[] } {
-    if (!text || text === PAUSE_MARKER) return { mainText: text, adlibs: [] };
-    const adlibs: AdlibItem[] = [];
-    const regex = /\(([^)]+)\)/gu;
-    let match: RegExpExecArray | null;
-    while ((match = regex.exec(text)) !== null) {
-      const content = match[1].trim();
-      if (!content) continue;
-      const isPrefix = text.slice(0, match.index).trim().length === 0;
-      const ratio = match.index / text.length;
-      adlibs.push({
-        text: content,
-        isPrefix,
-        triggerThreshold: isPrefix ? 0 : Math.min(.92, Math.max(.1, ratio > .72 ? .78 + adlibs.length * .04 : ratio))
-      });
-    }
-    if (!adlibs.length) return { mainText: text, adlibs };
-    const mainText = text.replace(/\(([^)]+)\)/gu, ' ').replace(/\s+([,.:!?…])/gu, '$1').replace(/\s+/gu, ' ').trim();
-    return { mainText, adlibs };
-  }
-
   let lyrics = '';
   let isLoading = false;
   let displayLines: LyricLine[] = [];
@@ -86,7 +58,8 @@
   let previousLetterSync = letterSync;
   let reduceMotion = false;
   let loadGeneration = 0;
-  let activeAdlib: { id: string; text: string; side: 'left' | 'right' | 'center' } | null = null;
+  let activeAdlib: AdlibCue | null = null;
+  let adlibTimeline: AdlibCue[] = [];
   $: adlibsEnabled = mobileMode && $settings.lyricsAdlibs !== false;
   $: if (!adlibsEnabled && activeAdlib) activeAdlib = null;
 
@@ -94,24 +67,11 @@
     return withAdlibs ? (line.mainText ?? line.text) : line.text;
   }
 
-  function syncAdlib(position: number, idx: number) {
-    const line = displayLines[idx];
-    if (!adlibsEnabled || !hasTimedLyrics || !get(isPlaying) || !line || line.pause || !line.adlibs?.length) {
-      if (activeAdlib) activeAdlib = null;
-      return;
-    }
-    const next = displayLines[idx + 1];
-    const duration = Math.max(.4, (next?.time ?? line.time + 2.6) - line.time);
-    const singing = Math.min(duration, Math.max(.5, calculateSungDuration(lineText(line), duration)));
-    const elapsed = Math.max(0, position - lyricsOffsetSecs - line.time);
-    let candidate: typeof activeAdlib = null;
-    for (let i = 0; i < line.adlibs.length; i++) {
-      const adlib = line.adlibs[i];
-      const trigger = Math.min(Math.max(.1, duration - .2), (adlib.isPrefix ? 0 : adlib.triggerThreshold * singing) + ADLIB_OFFSET_SECONDS);
-      if (elapsed >= trigger && elapsed < Math.min(duration + .5, trigger + ADLIB_VISIBLE_SECONDS)) {
-        candidate = { id: `${idx}:${i}`, text: adlib.text, side: adlib.text.length > 6 ? 'center' : (idx + i) % 2 ? 'right' : 'left' };
-      }
-    }
+  function syncAdlib(position: number) {
+    if (!active) return;
+    const candidate = adlibsEnabled && hasTimedLyrics
+      ? activeAdlibAt(adlibTimeline, position - lyricsOffsetSecs - Number($settings.lyricsAdlibOffset || 0) / 1000)
+      : null;
     if (activeAdlib?.id !== candidate?.id) activeAdlib = candidate;
   }
 
@@ -165,17 +125,19 @@
     const parsed: LyricLine[] = [];
     const lines = rawText.split('\n');
     for (const l of lines) {
-      const match = l.match(/\[(\d+):(\d+\.\d+)\]\s*(.*)/);
+      const match = l.match(/\[(\d+):(\d+(?:\.\d+)?)\]\s*(.*)/);
       if (match) {
         const mins = parseInt(match[1]);
         const secs = parseFloat(match[2]);
         const text = match[3] || '♪';
-        parsed.push({ time: mins * 60 + secs, text, ...extractAdlibs(text) });
+        parsed.push({ time: mins * 60 + secs, ...extractAdlibs(text), text: stripLyricTimestamps(text) });
       } else if (l.trim() && !l.startsWith('[')) {
         const text = l.trim();
         parsed.push({ time: -1, text, ...extractAdlibs(text) });
       }
     }
+
+    adlibTimeline = parsed.every(line => line.time >= 0) ? buildAdlibTimeline(parsed, calculateSungDuration) : [];
 
     // Only apply pause magic if we have synced lines
     if (parsed.length === 0 || parsed.some(p => p.time === -1)) {
@@ -232,6 +194,7 @@
     displayLines = [];
     charRefs = [];
     activeAdlib = null;
+    adlibTimeline = [];
     activeIndex = -1;
     
     let text: string | null = null;
@@ -314,9 +277,10 @@
    * индексе, и тогда строка зависала, хотя сам seek продолжал работать.
    */
   function syncActiveLine(position: number, force = false, behavior?: ScrollBehavior) {
+    if (!active) return;
     const idx = activeLineAt(position);
     const prev = activeIndex;
-    syncAdlib(position, idx);
+    syncAdlib(position);
     if (!force && idx === prev) return;
 
     activeIndex = idx;
@@ -374,7 +338,7 @@
 
   function setupRaf() {
     if (rafId) cancelAnimationFrame(rafId);
-    if (!letterSync || !hasTimedLyrics) {
+    if (!active || !letterSync || !hasTimedLyrics) {
       rafId = 0;
       return;
     }
@@ -390,11 +354,10 @@
         rafId = 0;
         return;
       }
+      if (!active || !get(isPlaying)) { rafId = 0; return; }
       rafId = requestAnimationFrame(tickFrame);
       const frameMs = lastFrameTs === 0 ? 1000 / 60 : Math.min(100, Math.max(1, ts - lastFrameTs));
       lastFrameTs = ts;
-      if (!get(isPlaying)) return;
-
       const idx = activeIndex;
       if (idx < 0 || idx >= displayLines.length) return;
       const cur = displayLines[idx];
@@ -403,8 +366,8 @@
       const offsetSecs = lyricsOffsetSecs;
       // `get(progress)` instead of `$progress`: the auto-subscription invalidated this
       // component 10x/s (the backend tick rate) and forced a full flush + fragment
-      // diff, even though the value is only ever read here inside the rAF loop. This
-      // frame already runs at most every 33 ms and writes to the DOM directly.
+      // diff, even though the value is only ever read here inside the rAF loop.
+      // Write the karaoke progress directly without rerendering the component.
       const adjustedProgress = Math.max(0, get(progress) - offsetSecs);
       
       const dur = Math.max(0.4, (next?.time ?? cur.time + 2.6) - cur.time);
@@ -470,12 +433,12 @@
     // переключения режима или seek строка восстанавливается без ожидания отдельного IPC.
     const unsubscribeProgress = progress.subscribe((position) => syncActiveLine(position));
     const unsubscribePlayback = isPlaying.subscribe((playing) => {
-      if (!playing && activeAdlib) activeAdlib = null;
-      else if (playing && hasTimedLyrics) syncAdlib(get(progress), activeIndex);
+      if (!playing) { cancelAnimationFrame(rafId); rafId = 0; }
+      else if (active && hasTimedLyrics) { syncAdlib(get(progress)); if (letterSync) setupRaf(); }
     });
 
     const onVisibility = () => {
-      if (letterSync && hasTimedLyrics && document.visibilityState !== 'hidden' && !rafId) {
+      if (active && get(isPlaying) && letterSync && hasTimedLyrics && document.visibilityState !== 'hidden' && !rafId) {
         setupRaf();
       }
     };
@@ -581,6 +544,8 @@
     return blocks;
   }
 
+  $: if (!active) { cancelAnimationFrame(rafId); rafId = 0; }
+  $: if (active && hasTimedLyrics) { syncActiveLine(get(progress), true, 'auto'); if (letterSync && get(isPlaying)) setupRaf(); }
   $: plainBlocks = toPlainBlocks(lyrics, adlibsEnabled);
 </script>
 
@@ -589,9 +554,9 @@
 {#if mobileMode && !embedded && $currentTrack?.source === 'yandex' && $settings.mobileVideoBackground !== false && $settings.mobileLyricsVideoBackground !== false}
   <MobileVideoBackdrop track={$currentTrack} coverUrl={$currentTrack.coverUrl} active={$isPlaying} variant="lyrics" />
 {/if}
-{#if mobileMode && activeAdlib && adlibsEnabled}
+{#if active && mobileMode && activeAdlib && adlibsEnabled}
   {#key activeAdlib.id}
-    <div class="mobile-lyrics-adlib-stage" aria-hidden="true" in:fade={{ duration: !reduceMotion && $settings.mobileMotion ? 220 : 0 }} out:fade={{ duration: !reduceMotion && $settings.mobileMotion ? 180 : 0 }}>
+    <div class="mobile-lyrics-adlib-stage" aria-hidden="true" in:fade={{ duration: !reduceMotion && $settings.mobileMotion ? 140 : 0 }} out:fade={{ duration: !reduceMotion && $settings.mobileMotion ? 240 : 0 }}>
       <span class="mobile-lyrics-adlib is-{activeAdlib.side}" class:is-long={activeAdlib.text.length > 14}>{activeAdlib.text}</span>
     </div>
   {/key}

@@ -11,6 +11,8 @@ mod import;
 mod ios_audio;
 #[cfg(target_os = "ios")]
 mod ios_media;
+#[cfg(target_os = "ios")]
+mod ios_playback_gate;
 mod ios_navigation;
 mod network;
 mod shared;
@@ -278,6 +280,8 @@ pub fn run() {
             audio::audio_load_url,
             audio::audio_prefetch_url,
             audio::audio_play,
+            audio::audio_ios_begin_track,
+            audio::audio_ios_previous_prepare,
             audio::audio_pause,
             audio::audio_stop,
             audio::audio_cancel_load,

@@ -81,7 +81,29 @@ pub async fn audio_load_url(
 
 #[tauri::command]
 pub fn audio_play(app: AppHandle, state: State<'_, AudioState>) {
+    #[cfg(target_os = "ios")]
+    {
+        crate::ios_media::request_play();
+        if crate::ios_audio::initialize_session().is_err() { return; }
+    }
     engine::play(&app, state);
+}
+
+#[tauri::command]
+pub fn audio_ios_begin_track() {
+    #[cfg(target_os = "ios")]
+    {
+        crate::ios_media::request_play();
+        let _ = crate::ios_audio::initialize_session();
+    }
+}
+
+#[tauri::command]
+pub fn audio_ios_previous_prepare(epoch: u64, previous: Option<BackgroundTrack>, current: Option<BackgroundTrack>) {
+    #[cfg(target_os = "ios")]
+    background::prepare_previous(epoch, previous, current);
+    #[cfg(not(target_os = "ios"))]
+    let _ = (epoch, previous, current);
 }
 
 #[tauri::command]
@@ -91,6 +113,8 @@ pub async fn audio_prefetch_url(url: Option<String>) {
 
 #[tauri::command]
 pub fn audio_pause(app: AppHandle, state: State<'_, AudioState>) {
+    #[cfg(target_os = "ios")]
+    crate::ios_media::request_pause();
     engine::pause(&app, state);
 }
 
@@ -208,7 +232,10 @@ pub fn audio_set_metadata(
     #[cfg(target_os = "android")]
     crate::android_media::metadata(&title, &artist, cover_url.as_deref(), duration_secs);
     #[cfg(target_os = "ios")]
-    crate::ios_media::metadata(&title, &artist, cover_url.as_deref(), duration_secs);
+    {
+        crate::ios_media::metadata(&title, &artist, cover_url.as_deref(), duration_secs);
+        crate::ios_media::playback(engine::is_playing(state.clone()), engine::get_position(state.clone()), *state.playback_rate.lock().unwrap() as f64);
+    }
     engine::set_metadata(title, artist, cover_url, duration_secs, state);
 }
 
@@ -217,7 +244,7 @@ pub fn audio_set_playback_state(playing: bool, app: AppHandle, state: State<'_, 
     #[cfg(target_os = "android")]
     crate::android_media::playback(playing, engine::get_position(app.state::<AudioState>()));
     #[cfg(target_os = "ios")]
-    crate::ios_media::playback(playing, engine::get_position(app.state::<AudioState>()), *state.playback_rate.lock().unwrap() as f64);
+    crate::ios_media::playback(engine::is_playing(state.clone()), engine::get_position(app.state::<AudioState>()), *state.playback_rate.lock().unwrap() as f64);
     #[cfg(not(target_os = "android"))]
     let _ = app;
     engine::set_playback_state(playing, state);

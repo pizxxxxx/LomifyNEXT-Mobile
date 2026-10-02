@@ -252,6 +252,8 @@ fn begin_crossfade(state: &AudioState, crossfade_ms: u64, delay_ms: u64) {
 /// плеера в `commit_loaded_track`, и тогда переход честнее отложить до следующего тика, чем
 /// начать в один голос и оставить входящий трек на паузе навсегда.
 pub fn start_pending_crossfade(state: &AudioState) -> bool {
+    #[cfg(target_os = "ios")]
+    if crate::ios_media::playback_blocked() { return false; }
     if state.player.lock().unwrap().is_none() {
         return false;
     }
@@ -276,6 +278,7 @@ fn commit_loaded_track(
     state: &AudioState,
     bytes: Vec<u8>,
     new_player: rodio::Player,
+    _start_paused: bool,
     normalization_gain: f32,
     crossfade_ms: u64,
     remaining_ms: u64,
@@ -330,7 +333,14 @@ fn commit_loaded_track(
             new_player.set_volume(vol);
         }
     }
-    *state.player.lock().unwrap() = Some(new_player);
+    #[cfg(target_os = "ios")]
+    let waiting = crossfade_is_waiting(state);
+    let mut current = state.player.lock().unwrap();
+    #[cfg(target_os = "ios")]
+    if crate::ios_media::playback_blocked() || _start_paused || waiting { new_player.pause(); }
+    else { new_player.play(); }
+    *current = Some(new_player);
+    drop(current);
     *state.source_bytes.lock().unwrap() = Some(bytes);
     *state.normalization_gain.lock().unwrap() = normalization_gain;
     // Fresh track starts at source 0 / output 0.
@@ -370,7 +380,7 @@ async fn build_player_from_bytes(
             &mixer,
             volume,
             normalization_gain,
-            start_paused,
+            start_paused || cfg!(target_os = "ios"),
             eq_params,
             analyser_buffer,
         )?;
@@ -394,6 +404,7 @@ fn commit_and_log(
     label: &str,
     bytes: Vec<u8>,
     prepared: PreparedPlayer,
+    _start_paused: bool,
     normalization_gain: f32,
     volume: f32,
     crossfade_ms: u64,
@@ -436,6 +447,7 @@ fn commit_and_log(
         state,
         bytes,
         player,
+        _start_paused,
         normalization_gain,
         crossfade_ms,
         remaining_now,
@@ -473,7 +485,7 @@ pub fn reload_current_track(state: &AudioState) -> Result<(), String> {
         } else {
             1.0
         },
-        was_paused,
+        was_paused || cfg!(target_os = "ios"),
         state.eq_params.clone(),
         state.analyser_buffer.clone(),
     )?
@@ -488,7 +500,11 @@ pub fn reload_current_track(state: &AudioState) -> Result<(), String> {
             .ok();
     }
 
+    #[cfg(target_os = "ios")]
+    let waiting = crossfade_is_waiting(state);
     let mut player = state.player.lock().unwrap();
+    #[cfg(target_os = "ios")]
+    if crate::ios_media::playback_blocked() || waiting { new_player.pause(); } else { new_player.play(); }
     if let Some(old) = player.take() {
         old.stop();
     }
@@ -588,6 +604,7 @@ pub async fn load_file(
         &format!("файл #{generation}"),
         bytes,
         prepared,
+        start_paused,
         normalization_gain,
         vol,
         crossfade_ms,
@@ -847,6 +864,7 @@ pub async fn load_url(
         &format!("поток #{generation}"),
         bytes,
         prepared,
+        start_paused,
         normalization_gain,
         vol,
         crossfade_ms,
@@ -856,6 +874,8 @@ pub async fn load_url(
 }
 
 pub fn play(app: &AppHandle, state: State<'_, AudioState>) {
+    #[cfg(target_os = "ios")]
+    if crate::ios_media::playback_blocked() { return; }
     // If the device errored (sleep/wake, headphone unplug), reconnect immediately
     // instead of waiting for stall detection (2s delay).
     if state.device_error.load(Ordering::Relaxed) {
@@ -997,7 +1017,7 @@ pub fn seek_to(state: &AudioState, position: f64) -> Result<(), String> {
         } else {
             1.0
         },
-        was_paused,
+        was_paused || cfg!(target_os = "ios"),
         state.eq_params.clone(),
         state.analyser_buffer.clone(),
     )
@@ -1007,7 +1027,11 @@ pub fn seek_to(state: &AudioState, position: f64) -> Result<(), String> {
         new_player.try_seek(target).ok();
     }
 
+    #[cfg(target_os = "ios")]
+    let waiting = crossfade_is_waiting(state);
     let mut player = state.player.lock().unwrap();
+    #[cfg(target_os = "ios")]
+    if crate::ios_media::playback_blocked() || waiting { new_player.pause(); } else { new_player.play(); }
     if let Some(old) = player.take() {
         old.stop();
     }
@@ -1096,13 +1120,23 @@ pub fn set_normalization(enabled: bool, state: State<'_, AudioState>) {
 }
 
 pub fn is_playing(state: State<'_, AudioState>) -> bool {
-    state
+    #[cfg(target_os = "ios")]
+    if crate::ios_media::playback_blocked() { return false; }
+    let playing = state
         .player
         .lock()
         .unwrap()
         .as_ref()
         .map(|player| !player.is_paused() && !player.empty())
-        .unwrap_or(false)
+        .unwrap_or(false);
+    // The incoming source may wait silently while the outgoing source is audible.
+    // Remote pause/toggle must still see a playing app during that interval.
+    #[cfg(target_os = "ios")]
+    if !playing {
+        return state.crossfade.lock().unwrap().player.as_ref()
+            .is_some_and(|player| !player.is_paused() && !player.empty());
+    }
+    playing
 }
 
 pub fn set_metadata(

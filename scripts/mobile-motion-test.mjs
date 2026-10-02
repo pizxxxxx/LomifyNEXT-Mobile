@@ -8,6 +8,7 @@ let nextId = 0;
 const document = { hidden: false };
 const environment = {
   document,
+  CustomEvent: class { constructor(type, options) { this.type = type; this.detail = options.detail; } },
   requestAnimationFrame: fn => { frames.set(++nextId, fn); return nextId; },
   cancelAnimationFrame: id => frames.delete(id),
   setTimeout: fn => { tasks.set(++nextId, fn); return nextId; },
@@ -47,14 +48,19 @@ let reduced = false, off = false, keyboard = false;
 const animations = [];
 const node = {
   closest: () => off || keyboard,
+  dispatchEvent() {},
   animate(keyframes, options) {
-    const animation = { keyframes, options, playState: 'running', cancelled: false, cancel() { this.cancelled = true; } };
+    const animation = { keyframes, options, pause() { this.playState = 'paused'; }, play() { this.playState = 'running'; }, playState: 'running', cancelled: false, cancel() { this.cancelled = true; } };
     animations.push(animation);
     return animation;
   }
 };
 const reveal = mobileReveal(node, 'library');
 assert.equal(animations.length, 1);
+assert.equal(animations[0].playState, 'paused', 'DOM mount must not consume the reveal timeline');
+flush(frames);
+assert.equal(animations[0].playState, 'running');
+assert.equal(animations[0].options.duration, 340);
 reveal.update('library');
 assert.equal(animations.length, 1, 'Unchanged state must not restart motion');
 reveal.update('likes');

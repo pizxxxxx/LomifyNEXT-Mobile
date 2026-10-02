@@ -301,7 +301,7 @@ pub fn start_tick_emitter(app: &AppHandle) {
                         if emit_progress {
                             handle.emit("audio:tick", pos).ok();
                             #[cfg(target_os = "ios")]
-                            crate::ios_media::playback(playing, pos, *state.playback_rate.lock().unwrap() as f64);
+                            crate::ios_media::playback(engine::is_playing(handle.state::<AudioState>()), pos, *state.playback_rate.lock().unwrap() as f64);
                             timing::process_lyrics_timeline(&handle, &state, pos);
                             timing::process_comments_timeline(&handle, &state, pos);
                         }

@@ -2,8 +2,6 @@
   import { pushMobileHistory } from '$lib/mobileNavigation';
   import { onMount, onDestroy, tick as svelteTick } from 'svelte';
   import { cubicOut } from 'svelte/easing';
-  import { fade } from 'svelte/transition';
-  import { mobileReveal } from '$lib/actions/mobileReveal';
   import { afterMobilePaint } from '$lib/utils/mobilePaint';
   import { Play, Pause, ChevronDown, Music2, MoreHorizontal, Plus, SlidersHorizontal, FastForward, Rewind, MessageSquareQuote } from 'lucide-svelte';
   import { mobileHold } from '$lib/actions/mobileHold';
@@ -19,6 +17,12 @@
   let mobileExpanded = false;
   let mobileShowLyrics = false;
   let mobileDetailsReady = false;
+  let cancelMobileDetails = () => {};
+  function prepareMobileDetails(delay: number) {
+    cancelMobileDetails();
+    cancelMobileDetails = afterMobilePaint(() => { if (mobileExpanded) mobileDetailsReady = true; },
+      $settings.mobileMotion === false || mobileReducedMotion ? 0 : delay);
+  }
   let mobileSeekTime: number | null = null;
   let mobileDisplayTime = 0;
   let lastMobileRenderAt = 0;
@@ -57,8 +61,9 @@
   function toggleMobileLyrics() {
     const fromArtwork = document.activeElement?.classList.contains('mobile-now-artwork');
     mobileShowLyrics = !mobileShowLyrics;
+    if (mobileShowLyrics && !mobileDetailsReady) prepareMobileDetails(640);
     if (mobileShowLyrics && fromArtwork) void svelteTick().then(() => document.querySelector<HTMLButtonElement>('.mobile-lyrics-toggle')?.focus({ preventScroll: true }));
-    document.querySelector('.mobile-player.expanded')?.dispatchEvent(new CustomEvent('lomify:layout-motion', { bubbles: true, detail: { duration: 400 } }));
+    document.querySelector('.mobile-player.expanded')?.dispatchEvent(new CustomEvent('lomify:layout-motion', { bubbles: true, detail: { duration: 660 } }));
   }
   function openMobilePlayerView(view: 'lyrics' | 'equalizer') {
     history.replaceState({ ...history.state, mobilePlayer: false }, '');
@@ -67,8 +72,10 @@
   }
   function mobilePlayerTransition(node: Element, _params: unknown, options: { direction: 'in' | 'out' | 'both' }) {
     const reduced = $settings.mobileMotion === false || matchMedia('(prefers-reduced-motion: reduce)').matches;
+    const duration = reduced ? 0 : options.direction === 'out' ? 360 : 480;
+    node.dispatchEvent(new CustomEvent('lomify:layout-motion', { bubbles: true, detail: { duration: duration + 20 } }));
     return {
-      duration: reduced ? 0 : options.direction === 'out' ? 240 : 320,
+      duration,
       easing: cubicOut,
       css: (t: number) => `transform:translateY(${(1 - t) * Math.max(0, node.clientHeight - Number.parseFloat((node as HTMLElement).style.getPropertyValue('--mobile-player-dismiss-y') || '0'))}px);border-radius:${(1 - t) * 32}px`
     };
@@ -77,14 +84,13 @@
     let previous = false;
     let trigger: HTMLElement | null = null;
     const blocked = new Map<HTMLElement, boolean>();
-    let cancelDetails = () => {};
     function update(expanded: boolean) {
       if (expanded === previous) return;
       previous = expanded;
-      cancelDetails();
+      cancelMobileDetails();
       if (expanded) {
         mobileDetailsReady = false;
-        cancelDetails = afterMobilePaint(() => { if (previous) mobileDetailsReady = true; });
+        prepareMobileDetails(500);
         trigger = document.querySelector<HTMLElement>('.mobile-player:not(.expanded) .mobile-mini-info');
         document.querySelectorAll<HTMLElement>('.mobile-header, .mobile-content, .mobile-nav').forEach(el => {
           blocked.set(el, el.inert); el.inert = true;
@@ -109,11 +115,7 @@
     }
     node.addEventListener('keydown', keydown);
     update(open);
-    return { update, destroy() { update(false); cancelDetails(); mobileDetailsReady = false; node.removeEventListener('keydown', keydown); } };
-  }
-  function mobileLyricsFade(node: HTMLElement) {
-    const off = $settings.mobileMotion === false || node.closest('[data-input="keyboard"]');
-    return fade(node, { duration: off ? 0 : mobileReducedMotion ? 120 : 180, easing: cubicOut });
+    return { update, destroy() { update(false); cancelMobileDetails(); mobileDetailsReady = false; node.removeEventListener('keydown', keydown); } };
   }
   import { Volume2, SkipBack, SkipForward, Shuffle, Repeat, Mic2, Radio, Heart, Share2, Download, Check, Trash2, Loader2 } from 'lucide-svelte';
   import { MorphIcon } from 'morphicons/svelte';
@@ -364,9 +366,11 @@
   let preparedNext: PreparedNext | null = null;
   let preparingNext = false;
   const backgroundEpochBase = Date.now() * 1000;
-  type BackgroundAdvance = { sequence: number; key: string; durationSecs: number | null };
+  type BackgroundAdvance = { sequence: number; key: string; durationSecs: number | null; previous?: boolean };
   type BackgroundStatus = { epoch: number; sequence: number; loading: boolean; advances: BackgroundAdvance[] };
-  type BackgroundCandidate = { epoch: number; track: any; index: number; key: string };
+  type NativeTrackSource = { key: string; title: string; artist: string; coverUrl: string | null; filePath: string | null; url: string | null };
+  type BackgroundCandidate = { epoch: number; track: any; index: number; key: string; source?: NativeTrackSource };
+  let nativeCurrentSource: NativeTrackSource | null = null;
   let backgroundCandidates: BackgroundCandidate[] = [];
   let backgroundPrepareRequest = 0;
   let nativeLoadedTrack: any = null;
@@ -393,6 +397,29 @@
     const resolved: BackgroundCandidate[] = [];
     const sources: Array<{ key: string; title: string; artist: string; coverUrl: string | null; filePath: string | null; url: string | null }> = [];
     await invoke('audio_background_prepare', { epoch: nativeEpoch, candidates: [] });
+    if (isIOS) {
+      const current = get(currentTrack);
+      if (current && nativeCurrentSource) {
+        resolved.push({ epoch: nativeEpoch, track: current, index: -3, key: nativeCurrentSource.key, source: nativeCurrentSource });
+        backgroundCandidates = [...resolved];
+      }
+      await invoke('audio_ios_previous_prepare', { epoch: nativeEpoch, previous: null, current: nativeCurrentSource });
+      const track = get(trackHistory).at(-1);
+      if (track) {
+        try {
+          const key = buildUrn(track);
+          const filePath = track.isLocal || track.source === 'Локальный' ? track.audioUrl : await invoke<string | null>('track_get_cache_path', { urn: key });
+          const url = filePath ? null : await getAudioUrl(track, { silent: true });
+          if (epoch !== loadGeneration || request !== backgroundPrepareRequest) return;
+          if (filePath || url) {
+            resolved.push({ epoch: nativeEpoch, track, index: -2, key, source: { key, title: track.title, artist: track.artist, coverUrl: track.coverUrl || null, filePath, url } });
+            backgroundCandidates = [...resolved];
+            await invoke('audio_ios_previous_prepare', { epoch: nativeEpoch, previous: { key, title: track.title, artist: track.artist, coverUrl: track.coverUrl || null, filePath, url }, current: nativeCurrentSource });
+          }
+        } catch (error) { console.warn('[player] previous preparation failed', error); }
+      }
+    }
+
     if (!planned.length || $settings.preloadNext === false) {
       void invoke('audio_prefetch_url', { url: null });
     }
@@ -409,7 +436,7 @@
         if (epoch !== loadGeneration || request !== backgroundPrepareRequest) return;
         const currentIndex = index < 0 ? -1 : get(queue).findIndex(item => item === track);
         if (index >= 0 && currentIndex < 0 || !filePath && !url) break;
-        resolved.push({ epoch: nativeEpoch, track, index: currentIndex, key });
+        resolved.push({ epoch: nativeEpoch, track, index: currentIndex, key, source: { key, title: track.title, artist: track.artist, coverUrl: track.coverUrl || null, filePath, url } });
         sources.push({ key, title: track.title, artist: track.artist, coverUrl: track.coverUrl || null, filePath, url });
         if (sources.length === 1 && index >= 0) {
           preparedNext = { queueRef: q, index: currentIndex, urn: key, url };
@@ -438,9 +465,12 @@
     for (const advance of status.advances) {
       if (advance.sequence <= lastBackgroundSequence) continue;
       const candidate = backgroundCandidates.find(item => item.epoch === status.epoch && item.key === advance.key &&
-        (item.index < 0 ? item.track === previous : remaining.includes(item.track)));
+        (advance.previous ? item.track === history.at(-1) : item.index === -1 ? item.track === previous : remaining.includes(item.track)));
       if (!candidate) break;
-      if (candidate.index >= 0) {
+      if (advance.previous) {
+        history.pop();
+        if (previous) remaining.unshift(previous);
+      } else if (candidate.index !== -1) {
         const index = remaining.indexOf(candidate.track);
         remaining = [...remaining.slice(0, index), ...remaining.slice(index + 1)];
         if (repeatMode === 1 && previous) remaining.push(previous);
@@ -449,6 +479,7 @@
       if ($waveActive) waveTrackDone(previous, (previous?.duration ?? 0) / 1000 || duration, 'finished');
       if (isScWaveTrack(previous)) refillSoundCloud = true;
       previous = candidate.track;
+      if (isIOS) nativeCurrentSource = candidate.source || null;
       duration = advance.durationSecs || candidate.track.duration / 1000 || 0;
       lastBackgroundSequence = advance.sequence;
       changed = true;
@@ -463,8 +494,9 @@
     currentTime = 0;
     mobileDisplayTime = 0;
     progress.set(0);
+    if (isIOS) lastPlayStateSent = await invoke<boolean>('audio_is_playing');
     currentTrack.set(previous);
-    isPlaying.set(true);
+    isPlaying.set(isIOS ? lastPlayStateSent === true : true);
     await svelteTick();
   }
 
@@ -842,6 +874,11 @@
         .then(async status => {
           if (document.hidden) return;
           await syncBackgroundPlayback(status);
+          if (isIOS) {
+            const playing = await invoke<boolean>('audio_is_playing');
+            lastPlayStateSent = playing;
+            isPlaying.set(playing);
+          }
           if (backgroundEndPending) {
             backgroundEndPending = false;
             handleTrackEnded();
@@ -915,8 +952,8 @@
       }
     }));
 
-    trackListener(listen('media:play', () => isPlaying.set(true)));
-    trackListener(listen('media:pause', () => isPlaying.set(false)));
+    trackListener(listen('media:play', () => { if (isIOS) lastPlayStateSent = true; isPlaying.set(true); }));
+    trackListener(listen('media:pause', () => { if (isIOS) lastPlayStateSent = false; isPlaying.set(false); }));
     trackListener(listen('media:toggle', () => isPlaying.update(p => !p)));
     trackListener(listen('media:next', () => playNext()));
     trackListener(listen('media:prev', () => playPrev()));
@@ -1110,6 +1147,7 @@
 
     const generation = ++loadGeneration;
     loadingGeneration = generation;
+    if (isIOS && get(isPlaying)) await invoke('audio_ios_begin_track');
     if (mobile) {
       try { await invoke('audio_background_prepare', { epoch: backgroundEpochBase + generation, candidates: [] }); }
       catch (error) { console.warn('[player] background queue reset failed', error); }
@@ -1293,9 +1331,16 @@
        loadPromise = invoke('audio_load_file', { path: localPath, cacheKey: localPath, startPaused: false, crossfadeMs, remainingMs: outgoingRemainingMs(crossfadeMs) });
     }
 
-    loadPromise.then((res: any) => {
+    loadPromise.then(async (res: any) => {
+      if (isIOS) {
+        const filePath = isLocalFile ? localPath : await invoke<string | null>('track_get_cache_path', { urn }).catch(() => null);
+        if (generation !== loadGeneration) return;
+        nativeCurrentSource = { key: urn, title: currentTrackObj.title, artist: currentTrackObj.artist, coverUrl: currentTrackObj.coverUrl || null, filePath, url: /^https?:/i.test(safeUrl) ? safeUrl : null };
+      }
+      const nativePlaying = isIOS ? await invoke<boolean>('audio_is_playing') : true;
       if (mobile && generation !== loadGeneration) return;
       if (mobileLoadTimer) clearTimeout(mobileLoadTimer);
+      if (isIOS) { lastPlayStateSent = nativePlaying; isPlaying.set(nativePlaying); }
       if (loadingGeneration === generation) loadingGeneration = null;
       // Эстафета передана (или загрузка кончилась ничем): уходящий трек с этого момента гаснет
       // сам по тику, и держать окно с флагом больше нельзя. Особенно окно: следующий трек может
@@ -1317,9 +1362,9 @@
       duration = res.duration || res.durationSecs || res.duration_secs || (currentTrackObj.duration ? currentTrackObj.duration / 1000 : 0);
       durationStore.set(duration);
       paintProgress();
-      $isPlaying = true;
+      $isPlaying = nativePlaying;
       beginLastFmTrack(currentTrackObj, duration);
-      invoke('audio_play').catch(() => {});
+      if (!isIOS) invoke('audio_play').catch(() => {});
 
       invoke('audio_set_metadata', {
         title: currentTrackObj.title,
@@ -1546,15 +1591,13 @@
           <button class="mobile-now-artwork" class:is-background={mobileShowLyrics} aria-label="Показать текст песни" aria-hidden={mobileShowLyrics} tabindex={mobileShowLyrics ? -1 : 0} on:click={toggleMobileLyrics}>
             {#if currentDisplayCover}<img src={currentDisplayCover} alt="" on:error={(event) => handleArtworkError(event, $currentTrack.coverUrl || '')} on:load={handleArtworkLoad} />{:else}<Music2 size={88} aria-hidden="true" />{/if}
           </button>
-          {#if mobileShowLyrics}
-            <section class="mobile-now-lyrics" aria-label="Текст песни" aria-busy={!mobileDetailsReady} transition:mobileLyricsFade>
+            <section class="mobile-now-lyrics" class:is-visible={mobileShowLyrics} inert={!mobileShowLyrics} aria-hidden={!mobileShowLyrics} aria-label="Текст песни" aria-busy={!mobileDetailsReady}>
               {#if mobileDetailsReady}
-                <div class="mobile-now-lyrics-content" use:mobileReveal={true}><Lyrics letterSync={$settings.mobileLyricsLetterSync} mobileMode embedded /></div>
+                <div class="mobile-now-lyrics-content"><Lyrics letterSync={$settings.mobileLyricsLetterSync} mobileMode embedded active={mobileShowLyrics} /></div>
               {:else}
                 <div class="mobile-lyrics-preparing" aria-hidden="true"><span class="mobile-loading-bar"></span><span class="mobile-loading-bar"></span><span class="mobile-loading-bar"></span></div>
               {/if}
             </section>
-          {/if}
         </div>
         <div class="mobile-now-bottom">
           <div class="mobile-now-track-heading">

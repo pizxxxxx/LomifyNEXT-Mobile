@@ -2,22 +2,33 @@
 export function mobileReveal(node: HTMLElement, active: boolean | string) {
   let animation: Animation | undefined;
   let previous: boolean | string = false;
+  let frame = 0;
   function update(visible: boolean | string) {
     if (visible === previous) return;
     previous = visible;
     const interrupted = animation?.playState === 'running' ? getComputedStyle(node) : null;
     const from = interrupted ? { opacity: interrupted.opacity, transform: interrupted.transform } : null;
+    cancelAnimationFrame(frame);
     animation?.cancel();
     animation = undefined;
     if (!visible || node.closest('[data-motion="off"], [data-input="keyboard"], [data-edge-back]')) return;
     const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
-    node.dispatchEvent(new CustomEvent('lomify:layout-motion', { bubbles: true, detail: { duration: reduced ? 120 : 200 } }));
     animation = node.animate(
       reduced ? [{ opacity: from?.opacity ?? .8 }, { opacity: 1 }] :
         [from ?? { opacity: .75, transform: 'translateY(8px)' }, { opacity: 1, transform: 'none' }],
-      { duration: reduced ? 120 : 200, easing: getComputedStyle(node).getPropertyValue('--ease-out').trim() || 'cubic-bezier(0.23, 1, 0.32, 1)' }
+      { duration: reduced ? 120 : 340, easing: getComputedStyle(node).getPropertyValue('--ease-out').trim() || 'cubic-bezier(0.23, 1, 0.32, 1)' }
     );
+    // A list can take a whole frame to mount. Start its clock after that work,
+    // so loading cannot consume the animation before the first painted frame.
+    animation.pause();
+    const current = animation;
+    frame = requestAnimationFrame(() => {
+      frame = 0;
+      if (animation !== current) return;
+      node.dispatchEvent(new CustomEvent('lomify:layout-motion', { bubbles: true, detail: { duration: reduced ? 120 : 340 } }));
+      current.play();
+    });
   }
   update(active);
-  return { update, destroy: () => animation?.cancel() };
+  return { update, destroy: () => { cancelAnimationFrame(frame); animation?.cancel(); } };
 }

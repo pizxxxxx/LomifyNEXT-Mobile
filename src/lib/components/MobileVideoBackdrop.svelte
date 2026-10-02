@@ -27,6 +27,11 @@
     (variant !== 'lyrics' || $settings.mobileLyricsVideoBackground !== false));
   let showVideo = $derived(enabled && !!videoUrl && failedUrl !== videoUrl);
 
+  function decorativeVideo(node: HTMLVideoElement) {
+    node.setAttribute('disableremoteplayback', '');
+    node.setAttribute('disablepictureinpicture', '');
+  }
+
   $effect(() => {
     const id = track?.source === 'yandex' ? track.id : undefined;
     const token = $settings.yandexToken;
@@ -69,6 +74,6 @@
   {#if variant === 'player' && coverUrl}<img src={coverUrl} alt="" onerror={(event) => handleArtworkError(event, track?.coverUrl || '')} onload={handleArtworkLoad} />{/if}
   {#if showVideo}
     <!-- svelte-ignore a11y_media_has_caption -->
-    <video src={videoUrl} autoplay muted loop playsinline preload="metadata" poster={coverUrl} class:ready={videoReady} onloadeddata={() => videoReady = true} onerror={() => failedUrl = videoUrl} aria-hidden="true"></video>
+    <video src={videoUrl} use:decorativeVideo autoplay muted loop playsinline preload="metadata" poster={coverUrl} class:ready={videoReady} onloadeddata={() => videoReady = true} onerror={() => failedUrl = videoUrl} aria-hidden="true"></video>
   {/if}
 </div>
