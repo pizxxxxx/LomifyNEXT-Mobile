@@ -28,7 +28,14 @@ unsafe extern "C" {
 extern "C" fn action(kind: i32, value: f64) -> i32 {
     // Latch before queueing: a pending decode/device rebuild must stay paused
     // even if the worker is still finishing a seek.
-    if matches!(kind, 1 | 6 | 10) { request_pause(); }
+    if kind == 6 {
+        // is_playing() becomes false after the latch: snapshot the last native
+        // playback state before blocking, independently of WebView delivery.
+        let was_playing = !GATE.blocked() && LAST_PLAYBACK.lock().unwrap().as_ref()
+            .is_some_and(|(playing, _, _, _)| *playing);
+        GATE.begin_interruption(was_playing);
+    }
+    if matches!(kind, 1 | 10) { request_pause(); }
     if kind == 10 { GATE.pause(true); }
     i32::from(
         ACTIONS
@@ -46,14 +53,12 @@ pub fn initialize(app: &AppHandle) -> Result<(), String> {
     std::thread::Builder::new()
         .name("ios-media-control".into())
         .spawn(move || {
-            let mut resume_after_interruption = false;
             while let Ok((kind, value)) = rx.recv() {
                 let app = &app_handle;
                 let state = app.state::<AudioState>();
                 crate::app::diagnostics::log_native(app, "INFO", format!("[iOS media] command {kind}"));
                 match kind {
                     0 | 2 if kind == 0 || !engine::is_playing(state.clone()) => {
-                        resume_after_interruption = false;
                         request_play();
                         if crate::ios_audio::initialize_session().is_ok() {
                             engine::play(app, state.clone());
@@ -62,7 +67,6 @@ pub fn initialize(app: &AppHandle) -> Result<(), String> {
                     }
                     1 | 2 | 10 => {
                         request_pause();
-                        resume_after_interruption = false;
                         engine::pause(app, state.clone());
                         let _ = app.emit("media:pause", ());
                     }
@@ -91,21 +95,18 @@ pub fn initialize(app: &AppHandle) -> Result<(), String> {
                         });
                     }
                     6 => {
-                        resume_after_interruption = engine::is_playing(state.clone());
                         engine::pause(app, state.clone());
                         let _ = app.emit("media:pause", ());
                     }
                     7 => {
-                        if resume_after_interruption
-                            && value != 0.0
-                            && GATE.can_resume_interruption()
-                            && crate::ios_audio::initialize_session().is_ok()
-                        {
-                            request_play();
-                            engine::play(app, state.clone());
-                            let _ = app.emit("media:play", ());
+                        if GATE.finish_interruption(value != 0.0) {
+                            if crate::ios_audio::initialize_session().is_ok() {
+                                engine::play(app, state.clone());
+                                if !GATE.blocked() { let _ = app.emit("media:play", ()); }
+                            } else {
+                                request_pause();
+                            }
                         }
-                        resume_after_interruption = false;
                     }
                     8 => {
                         background::set_hidden(true);

@@ -66,6 +66,12 @@ assert.equal(core.findLatestIOSRelease([{ ...ios25, assets: [] }, ios24]), ios24
 assert.equal(core.findLatestIOSRelease([{ ...ios25, html_url: 'https://example.com/' }, ios24]), ios24.html_url);
 assert.equal(core.findLatestIOSRelease([{ ...ios25, assets: [{ ...ios25.assets[0], browser_download_url: 'https://example.com/app.ipa' }] }]), null);
 assert.equal(core.findLatestIOSRelease([]), null);
+const combined29 = { ...makeRelease('v1.0.29', ['LomifyNEXT-1.0.29-arm64.apk', 'LomifyNEXT-1.0.29.ipa']), prerelease: true };
+assert.equal(core.findLatestIOSRelease([ios25, combined29]), combined29.html_url,
+  'The common release contains the latest installable iOS version');
+assert.equal(core.findAndroidUpdate([ios25, combined29], '1.0.28')?.version, '1.0.29');
+assert.equal(core.findLatestIOSRelease([{ ...combined29, assets: combined29.assets.slice(0, 1) }, ios25]), ios25.html_url,
+  'A combined release without its IPA must not hide a working iOS download');
 console.log('PASS iOS release selection: IPA only, beta releases, version ordering, drafts, missing IPA and expected repository');
 
 const opened = [];

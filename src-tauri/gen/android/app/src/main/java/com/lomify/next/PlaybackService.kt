@@ -41,11 +41,11 @@ class PlaybackService : Service() {
   private var artwork: Bitmap? = null
   private var fallbackArtwork: Bitmap? = null
   private var artworkRequest = 0
-  private var focusHeld = false
-  private val expirePaused = Runnable { if (!playing) stopSelf() }
+  private val focus = AudioFocusLease()
+  private val expirePaused = Runnable { if (!playing && !focus.interrupted) stopSelf() }
   private val becomingNoisy = object : BroadcastReceiver() {
     override fun onReceive(context: Context?, intent: Intent?) {
-      if (intent?.action == AudioManager.ACTION_AUDIO_BECOMING_NOISY && playing) control("pause")
+      if (intent?.action == AudioManager.ACTION_AUDIO_BECOMING_NOISY && (playing || focus.interrupted)) control("pause")
     }
   }
 
@@ -71,11 +71,31 @@ class PlaybackService : Service() {
         AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_MEDIA)
           .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC).build()
       )
-      .setOnAudioFocusChangeListener { change ->
-        if (change == AudioManager.AUDIOFOCUS_LOSS || change == AudioManager.AUDIOFOCUS_LOSS_TRANSIENT) {
-          main.post { if (playing) control("pause") }
+      .setAcceptsDelayedFocusGain(true)
+      .setOnAudioFocusChangeListener({ change ->
+        if (instance !== this || !focus.registered) return@setOnAudioFocusChangeListener
+        when (change) {
+          AudioManager.AUDIOFOCUS_LOSS_TRANSIENT -> {
+            val wasPlaying = playing
+            focus.transientLoss()
+            playing = false
+            nativeMediaAction("focus_loss_transient", if (wasPlaying) 1L else 0L)
+            publish()
+          }
+          AudioManager.AUDIOFOCUS_GAIN -> {
+            if (focus.registered) {
+              focus.granted()
+              // Rust decides whether manual pause/unplugging cancelled resume,
+              // then publishes the actual state; do not abandon focus here.
+              nativeMediaAction("focus_gain", 0L)
+            }
+          }
+          AudioManager.AUDIOFOCUS_LOSS -> {
+            focus.permanentLoss()
+            control("pause")
+          }
         }
-      }.build()
+      }, main).build()
     mediaSession = MediaSession(this, "LomifyNEXT").apply {
       setCallback(object : MediaSession.Callback() {
         override fun onPlay() = control("play")
@@ -112,7 +132,8 @@ class PlaybackService : Service() {
     main.removeCallbacks(expirePaused)
     unregisterReceiver(becomingNoisy)
     artworkWorker.shutdownNow()
-    if (focusHeld) audioManager.abandonAudioFocusRequest(focusRequest)
+    if (focus.registered) audioManager.abandonAudioFocusRequest(focusRequest)
+    focus.released()
     if (playbackWakeLock.isHeld) playbackWakeLock.release()
     mediaSession.isActive = false
     mediaSession.release()
@@ -124,27 +145,27 @@ class PlaybackService : Service() {
 
   private fun control(action: String, value: Long = 0L) {
     when (action) {
-      "play" -> playing = true
-      "pause", "stop" -> playing = false
+      "play" -> { focus.cancelInterruption(); playing = true }
+      "pause", "stop" -> { focus.cancelInterruption(); playing = false }
       "seek" -> positionMs = value.coerceAtLeast(0L)
     }
+    nativeMediaAction(action, value)
     if (action == "stop") {
       stopSelf()
     } else {
       publish()
     }
-    nativeMediaAction(action, value)
   }
 
   private fun publish() {
     main.removeCallbacks(expirePaused)
     if (playing && !playbackWakeLock.isHeld) playbackWakeLock.acquire()
     else if (!playing && playbackWakeLock.isHeld) playbackWakeLock.release()
-    if (playing && !focusHeld) {
-      focusHeld = audioManager.requestAudioFocus(focusRequest) == AudioManager.AUDIOFOCUS_REQUEST_GRANTED
-    } else if (!playing) {
-      if (focusHeld) audioManager.abandonAudioFocusRequest(focusRequest)
-      focusHeld = false
+    if (focus.shouldRelease(playing)) {
+      audioManager.abandonAudioFocusRequest(focusRequest)
+      focus.released()
+    }
+    if (!playing && !focus.interrupted) {
       main.postDelayed(expirePaused, PAUSED_TIMEOUT_MS)
     }
     val state = if (playing) PlaybackState.STATE_PLAYING else PlaybackState.STATE_PAUSED
@@ -181,7 +202,7 @@ class PlaybackService : Service() {
       .setVisibility(Notification.VISIBILITY_PUBLIC)
       .setCategory(Notification.CATEGORY_TRANSPORT)
       .setOnlyAlertOnce(true)
-      .setOngoing(playing)
+      .setOngoing(playing || focus.interrupted)
       .addAction(android.R.drawable.ic_media_previous, "Назад", actionIntent(ACTION_PREVIOUS, 1))
       .addAction(
         if (playing) android.R.drawable.ic_media_pause else android.R.drawable.ic_media_play,
@@ -194,8 +215,26 @@ class PlaybackService : Service() {
           .setShowActionsInCompactView(0, 1, 2)
       )
       .build()
-    if (playing) startForeground(NOTIFICATION_ID, notification)
+    if (playing || focus.interrupted) startForeground(NOTIFICATION_ID, notification)
     else notificationManager.notify(NOTIFICATION_ID, notification)
+    // Android 15+ requires a foreground app/service before requesting focus.
+    if (focus.shouldAcquire(playing)) {
+      when (audioManager.requestAudioFocus(focusRequest)) {
+        AudioManager.AUDIOFOCUS_REQUEST_GRANTED -> focus.granted()
+        AudioManager.AUDIOFOCUS_REQUEST_DELAYED -> {
+          focus.delayed()
+          playing = false
+          nativeMediaAction("focus_loss_transient", 1L)
+          publish()
+        }
+        else -> {
+          playing = false
+          focus.permanentLoss()
+          nativeMediaAction("pause", 0L)
+          publish()
+        }
+      }
+    }
   }
 
   private fun actionIntent(action: String, requestCode: Int): PendingIntent =

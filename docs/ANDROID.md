@@ -1,11 +1,12 @@
 # LomifyNEXT для Android
 
-Сборка 1.0.28 переносит общий интерфейс iOS 1.0.27 и обновляет
+Сборка 1.0.29 переносит общий интерфейс iOS 1.0.27 и обновляет
 Android-управление фоновой очередью и паузой.
 [Что перенесено, проверки и подпись](ANDROID_PARITY_1.0.28.md).
-[APK на GitHub](https://github.com/pizxxxxx/LomifyNEXT-Mobile/releases/download/android-v1.0.28/LomifyNEXT-1.0.28-arm64.apk)
+[APK на GitHub](https://github.com/pizxxxxx/LomifyNEXT-Mobile/releases/download/v1.0.29/LomifyNEXT-1.0.29-arm64.apk)
 подписан прежним ключом Windows: подпись совместима с GitHub-версией 1.0.16.
-Для обновления выбирай файл без `-test`; [подробнее о подписи](ANDROID_SIGNING.md).
+Возврат к музыке после звонка исправлен на уровне аудиофокуса и нативной
+паузы. [Общие релизы](MOBILE_RELEASES.md), [проверки прерывания](MOBILE_INTERRUPTION_1.0.29.md).
 Исходники Android находятся в `main`, iOS — в `ios`.
 
 Этот проект отделён от настольного: изменения находятся в `LomifyNEXT-Mobile`.

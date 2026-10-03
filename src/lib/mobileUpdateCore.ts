@@ -11,18 +11,18 @@ export interface GitHubRelease {
   assets: { name: string; browser_download_url: string }[];
 }
 
-/** iOS betas are published separately; GitHub's /latest points at Android. */
+/** Select the newest IPA from a combined release or the historical iOS releases. */
 export function findLatestIOSRelease(releases: GitHubRelease[]): string | null {
   let best: { version: string; url: string } | null = null;
   for (const release of releases) {
     if (release.draft || !Array.isArray(release.assets)) continue;
-    const version = /^ios-v(\d+\.\d+\.\d+(?:-(?:alpha|beta|rc)\.\d+)?)$/i.exec(release.tag_name || '')?.[1];
-    if (!version || release.html_url !== `${MOBILE_RELEASES_URL}/tag/${release.tag_name}`) continue;
-    const name = `LomifyNEXT-${version}.ipa`;
-    const hasIPA = release.assets.some(asset => asset.name === name &&
-      asset.browser_download_url === `${MOBILE_RELEASES_URL}/download/${release.tag_name}/${name}`);
-    if (!hasIPA || best && compareMobileVersions(version, best.version) <= 0) continue;
-    best = { version, url: release.html_url };
+    if (!release.tag_name || release.html_url !== `${MOBILE_RELEASES_URL}/tag/${release.tag_name}`) continue;
+    for (const asset of release.assets) {
+      const version = /^LomifyNEXT-(\d+\.\d+\.\d+(?:-(?:alpha|beta|rc)\.\d+)?)\.ipa$/i.exec(asset.name)?.[1];
+      if (!version || asset.browser_download_url !== `${MOBILE_RELEASES_URL}/download/${release.tag_name}/${asset.name}`) continue;
+      if (best && compareMobileVersions(version, best.version) <= 0) continue;
+      best = { version, url: release.html_url };
+    }
   }
   return best?.url ?? null;
 }

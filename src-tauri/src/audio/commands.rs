@@ -138,6 +138,10 @@ pub fn audio_pause(app: AppHandle, state: State<'_, AudioState>) {
 
 #[tauri::command]
 pub fn audio_stop(app: AppHandle, state: State<'_, AudioState>) {
+    #[cfg(target_os = "android")]
+    crate::android_playback_gate::request_pause();
+    #[cfg(target_os = "ios")]
+    crate::ios_media::request_pause();
     engine::stop(&app, state);
 }
 

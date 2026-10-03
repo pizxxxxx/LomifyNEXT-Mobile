@@ -7,6 +7,17 @@ export interface ChangelogEntry {
 
 export const CHANGELOG_HISTORY: ChangelogEntry[] = [
   {
+    version: '1.0.29', date: '2026-10-03',
+    highlights: [
+      { tag: 'Обновления', text: 'Android и iPhone теперь выходят вместе: APK и IPA в одном релизе.' },
+      { tag: 'Плеер', text: 'Исправлено восстановление музыки после временного прерывания звонком.' }
+    ],
+    details: [
+      { category: 'fix', title: 'Возврат к музыке после звонка', description: 'Плеер сохраняет состояние до прерывания и возвращается к нему, когда система снова разрешает звук. Ручная пауза, остановка и отключение наушников отменяют автоматическое продолжение.' },
+      { category: 'improvement', title: 'Общий релиз Android и iOS', description: 'Одна версия и одна страница загрузки. На Android выбирай APK, на iPhone — IPA для AltStore. Кнопка обновления на iPhone находит IPA и в общих релизах.' }
+    ]
+  },
+  {
     version: '1.0.28 beta', date: '2026-10-02',
     highlights: [
       { tag: 'Android', text: 'Общий мобильный интерфейс и исправления iOS 1.0.27 перенесены в Android-сборку.' },

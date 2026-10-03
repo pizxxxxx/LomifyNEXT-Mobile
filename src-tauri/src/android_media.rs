@@ -16,7 +16,7 @@ static APP: OnceLock<AppHandle> = OnceLock::new();
 static CONTROL_TX: OnceLock<mpsc::Sender<ControlAction>> = OnceLock::new();
 static SERVICE_CLASS: OnceLock<GlobalRef> = OnceLock::new();
 
-enum ControlAction { Play, Pause, Stop, Next, Previous, Seek(f64) }
+enum ControlAction { Play, Pause, Stop, Next, Previous, Seek(f64), InterruptionEnded }
 
 pub fn initialize(app: &AppHandle) -> Result<(), String> {
     // FindClass on a Rust-created thread uses the bootstrap class loader, which
@@ -62,6 +62,13 @@ pub fn initialize(app: &AppHandle) -> Result<(), String> {
                         } else if !background::try_previous(&handle) { let _ = handle.emit("media:prev", ()); }
                     }
                     ControlAction::Seek(position) => seek(&handle, position),
+                    ControlAction::InterruptionEnded => {
+                        if android_playback_gate::finish_interruption() {
+                            engine::play(&handle, state.clone());
+                            if !android_playback_gate::blocked() { let _ = handle.emit("media:play", ()); }
+                        }
+                        playback(engine::is_playing(state.clone()), engine::get_position(state));
+                    }
                 }
             }
         }) {
@@ -197,6 +204,14 @@ pub extern "system" fn Java_com_lomify_next_PlaybackService_nativeMediaAction(
     let action = action.to_string_lossy();
     let Some(app) = APP.get() else { return };
     match action.as_ref() {
+        "focus_loss_transient" => {
+            android_playback_gate::begin_interruption(value != 0);
+            let _ = CONTROL_TX.get().map(|tx| tx.send(ControlAction::Pause));
+            let _ = app.emit("media:pause", ());
+        }
+        "focus_gain" => {
+            let _ = CONTROL_TX.get().map(|tx| tx.send(ControlAction::InterruptionEnded));
+        }
         "play" => {
             android_playback_gate::request_play();
             let _ = CONTROL_TX.get().map(|tx| tx.send(ControlAction::Play));

@@ -1146,7 +1146,7 @@ pub fn is_playing(state: State<'_, AudioState>) -> bool {
         .unwrap_or(false);
     // The incoming source may wait silently while the outgoing source is audible.
     // Remote pause/toggle must still see a playing app during that interval.
-    #[cfg(target_os = "ios")]
+    #[cfg(any(target_os = "ios", target_os = "android"))]
     if !playing {
         return state.crossfade.lock().unwrap().player.as_ref()
             .is_some_and(|player| !player.is_paused() && !player.empty());
