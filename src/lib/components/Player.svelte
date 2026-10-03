@@ -901,6 +901,12 @@
     window.addEventListener('popstate', restoreMobilePlayer);
     const requestedMobilePlayer = () => { if (mobile && $currentTrack) openMobilePlayer(); };
     window.addEventListener('lomify:open-player', requestedMobilePlayer);
+    const closeForNavigation = () => {
+      if (!mobile || !mobileExpanded) return;
+      history.replaceState({ ...history.state, mobilePlayer: false }, '');
+      mobileExpanded = false;
+    };
+    window.addEventListener('lomify:close-player-for-navigation', closeForNavigation);
     const handleTrackCacheChanged = (event: Event) => {
       const detail = (event as CustomEvent<{ urn?: string; cached?: boolean }>).detail;
       if (!$currentTrack || !detail?.urn || detail.urn !== buildUrn($currentTrack)) return;
@@ -1027,6 +1033,7 @@
       window.removeEventListener('trackCacheChanged', handleTrackCacheChanged);
       window.removeEventListener('popstate', restoreMobilePlayer);
       window.removeEventListener('lomify:open-player', requestedMobilePlayer);
+      window.removeEventListener('lomify:close-player-for-navigation', closeForNavigation);
     };
   });
 

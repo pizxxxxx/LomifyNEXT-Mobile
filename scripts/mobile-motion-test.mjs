@@ -108,3 +108,26 @@ motion.update({ key: 'likes', from: null }); flush(frames);
 assert.equal(animations.length, before + 2, 'Reduced motion must keep collections static');
 motion.destroy();
 console.log('Collection motion: shelf-to-header geometry, mount ordering, interruption, unchanged data and reduced motion passed');
+
+// Root panes stay mounted, become inert on exit, and wait two paints before motion.
+const {mobilePageMotion}=load('../src/lib/actions/mobilePageMotion.ts');
+const pane={style:{},dataset:{},hidden:false,inert:false,clientWidth:390,closest:()=>null,animate:node.animate,dispatchEvent(){}};
+reduced=false;off=false;keyboard=false;
+const pageOptions={active:false,ready:true,direction:1,enabled:true};
+const pageMotion=mobilePageMotion(pane,pageOptions);
+assert.equal(pane.hidden,true);
+const startCount=animations.length;
+pageMotion.update({...pageOptions,active:true});
+assert.equal(pane.hidden,false);assert.equal(pane.inert,false);
+assert.equal(animations.at(-1).playState,'paused');flush(frames);assert.equal(animations.at(-1).playState,'paused');flush(frames);assert.equal(animations.at(-1).playState,'running');
+assert.equal(animations.at(-1).keyframes[0].transform,'translate3d(85.8px,0,0)');
+pageMotion.update({...pageOptions,active:false,direction:-1});
+assert.equal(pane.inert,true);assert.equal(pane.hidden,false,'Outgoing content stays visible until exit completes');
+assert.equal(animations.at(-1).keyframes.at(-1).transform,'translate3d(85.8px,0,0)');
+flush(frames);flush(frames);animations.at(-1).onfinish();assert.equal(pane.hidden,true);
+const waiting=animations.length;
+pageMotion.update({...pageOptions,active:true,ready:false});assert.equal(animations.length,waiting);assert.equal(pane.inert,true);
+pageMotion.update({...pageOptions,active:true});flush(frames);flush(frames);assert.equal(pane.inert,false);
+reduced=true;pageMotion.update({...pageOptions,active:false});assert.equal(pane.hidden,true);assert.equal(pane.style.willChange,'');
+pageMotion.destroy();
+console.log('PASS root page direction, two-paint start, inert exit, deferred mount, interruption and reduced motion');

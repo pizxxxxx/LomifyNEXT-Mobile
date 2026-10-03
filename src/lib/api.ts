@@ -2,6 +2,7 @@ import { fetch as tauriFetch } from '@tauri-apps/plugin-http';
 import { get } from 'svelte/store';
 import { settings, notify } from './stores';
 import { convertFileSrc } from '@tauri-apps/api/core';
+import { searchWithQueryVariants } from './utils/tolerantSearch';
 import {
   searchYandex,
   getYandexSimilar,
@@ -674,6 +675,7 @@ export async function getTrendingTracks(likedTracks: any[] = [], listenStats: an
  */
 export interface SearchResponse {
   tracks: any[];
+  correctedQuery?: string;
   /** Фактический источник результата: при недоступном Яндексе им может стать SoundCloud. */
   source: 'soundcloud' | 'yandex';
   fallbackUsed: boolean;
@@ -683,26 +685,28 @@ export interface SearchResponse {
  * Версия поиска со статусом источника для экрана выдачи. Старый `performSearch` ниже
  * оставлен как компактный API для мест, которым нужны только треки.
  */
-export async function performSearchDetailed(query: string): Promise<SearchResponse> {
+export async function performSearchDetailed(query: string, options: { tolerant?: boolean } = {}): Promise<SearchResponse> {
   const current = get(settings);
+  const lookup = (search: (text: string) => Promise<any[]>) => options.tolerant
+    ? searchWithQueryVariants(query, search) : search(query).then(tracks => ({ tracks }));
   if (current.searchSource === 'yandex' && current.yandexToken) {
     try {
       return {
-        tracks: await searchYandex(current.yandexToken, query, 50),
+        ...await lookup(text => searchYandex(current.yandexToken, text, 50)),
         source: 'yandex',
         fallbackUsed: false
       };
     } catch (e) {
       console.error('[yandex] поиск не удался, отдаём SoundCloud', e);
       return {
-        tracks: await searchSoundCloud(query, 50, true),
+        ...await lookup(text => searchSoundCloud(text, 50, true)),
         source: 'soundcloud',
         fallbackUsed: true
       };
     }
   }
   return {
-    tracks: await searchSoundCloud(query, 50, true),
+    ...await lookup(text => searchSoundCloud(text, 50, true)),
     source: 'soundcloud',
     fallbackUsed: false
   };
@@ -927,9 +931,14 @@ export async function getAudioUrl(track: any, opts: { silent?: boolean; fullTrac
       yandexMissedTrack ? `В Яндекс Музыке этого трека нет. ${text}` : text;
 
     const clientId = await getSoundCloudClientId();
+    // Indexed search returns metadata only. Resolve its public SC media lazily,
+    // after a Play/Download action, rather than enriching every cover during motion.
+    const indexedMedia = track.discoverySearch && !track.audioUrl && !track.transcodings?.length
+      ? await getTrackInfo(track.id) : null;
     const { ranked, dropped } = rankStreamUrls([
       ...(track.audioUrl ? [track.audioUrl] : []),
       ...(track.transcodings || []),
+      ...(indexedMedia?.media?.transcodings?.map((item: any) => item.url).filter(Boolean) || []),
     ]);
 
     if (ranked.length === 0) {

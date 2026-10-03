@@ -34,6 +34,10 @@
   import { goToArtist } from '$lib/utils/navigation';
   import MusicServiceIcon from './MusicServiceIcon.svelte';
   import { coverUrlAtSize } from '$lib/offlineCovers';
+  import { yandexSearchSuggestions } from '$lib/yandexDiscovery';
+  import { mobileReveal } from '$lib/actions/mobileReveal';
+  import { mobileDownloads } from '$lib/mobileDownloads';
+  import { normalizeSearchText, rankSearchMatches, searchMatchScore } from '$lib/utils/tolerantSearch';
 
   type SearchView = 'all' | 'tracks' | 'artists' | 'playlists' | 'local';
   type SearchSourceKind = 'soundcloud' | 'yandex' | 'local';
@@ -59,10 +63,45 @@
   let visibleTrackLimit = 20;
   let searchError = '';
   let searchNotice = '';
+  let suggestions: string[] = [];
+  let suggestionsOpen = false;
+  let suggestionIndex = -1;
+  let suggestionTimer: ReturnType<typeof setTimeout> | undefined;
+  let suggestionGeneration = 0;
+  let suggestionController: AbortController | undefined;
+  let searchInput: HTMLInputElement;
+
+  function suggest(part: string) {
+    const run = ++suggestionGeneration;
+    clearTimeout(suggestionTimer); suggestionController?.abort();
+    suggestions = []; suggestionIndex = -1;
+    if (!isMobile || part.trim().length < 2) return;
+    suggestionsOpen = true;
+    const token = $settings.yandexToken;
+    suggestionTimer = setTimeout(async () => {
+      suggestionController = new AbortController();
+      const texts = [...new Set([...$searchHistory, ...$likedTracks.flatMap(track => [track.title, track.artist])]
+        .filter((text): text is string => typeof text === 'string'))];
+      const local = (await rankSearchMatches(texts, part, text => text, () => run !== suggestionGeneration)).slice(0, 6);
+      if (run !== suggestionGeneration) return;
+      suggestions = local;
+      if ($settings.searchSource !== 'yandex' || !token) return;
+      try {
+        const online = await yandexSearchSuggestions(token, part, suggestionController.signal);
+        if (run === suggestionGeneration && token === $settings.yandexToken)
+          suggestions = [...new Set([...online, ...local])].slice(0, 6);
+      } catch { /* Local completions remain available offline. */ }
+    }, 220);
+  }
+  function chooseSuggestion(text: string) {
+    ++suggestionGeneration; clearTimeout(suggestionTimer); suggestionController?.abort();
+    suggestionsOpen = false; suggestionIndex = -1;
+    scheduleSearch(text, 0); searchInput?.blur();
+  }
 
   const SEARCH_PAGE_SIZE = 20;
 
-  $: localResults = $searchResults.filter((track: any) => sourceKind(track) === 'local');
+  $: localResults = $searchResults.filter((track: any) => sourceKind(track) === 'local' || track.fromCollection);
   $: artistMatches = collectArtistMatches($searchResults).slice(0, 6);
   $: tracksForView = (resultView === 'local' ? localResults : $searchResults).filter((track: any) => !isMobile || !$settings.mobileHiddenTracks.includes(mobileTrackKey(track)));
   $: topResult = resultView === 'all' ? (tracksForView[0] ?? null) : null;
@@ -91,11 +130,12 @@
     });
   });
 
-  onDestroy(() => { clearTimeout(timeout); ++searchGeneration; });
+  onDestroy(() => { clearTimeout(timeout); ++searchGeneration; ++suggestionGeneration; clearTimeout(suggestionTimer); suggestionController?.abort(); });
 
   function handleSearch(e: Event) {
     const val = (e.target as HTMLInputElement).value;
     scheduleSearch(val);
+    suggest(val);
   }
 
   function scheduleSearch(val: string, delay = 380) {
@@ -126,16 +166,17 @@
     timeout = setTimeout(async () => {
       // Capture the query this run belongs to: `$searchQuery` keeps changing while we await.
       const query = val;
-      const lowerQuery = query.toLowerCase();
       try {
         let filteredLocal: any[] = [];
         try {
           // Локальная медиатека отвечает первой и показывается, пока сеть ещё думает.
-          const localTracks = isMobile ? [] : await getTracks();
-          filteredLocal = localTracks.filter(t =>
-            t.title.toLowerCase().includes(lowerQuery) ||
-            t.artist.toLowerCase().includes(lowerQuery)
-          ).map(t => ({ ...t, source: 'Локальный', isLocal: true }));
+          const localTracks = isMobile
+            ? [...$mobileDownloads, ...$likedTracks, ...$playlists.flatMap(item => item.tracks || [])]
+            : await getTracks();
+          const matches = isMobile
+            ? await rankSearchMatches(localTracks, query, track => `${track.title || ''} ${track.artist || ''}`, () => generation !== searchGeneration)
+            : localTracks.filter(track => `${track.title || ''}`.toLowerCase().includes(query.toLowerCase()) || `${track.artist || ''}`.toLowerCase().includes(query.toLowerCase()));
+          filteredLocal = matches.map(track => isMobile ? { ...track, fromCollection: true } : { ...track, source: 'Локальный', isLocal: true });
         } catch (e) {
           console.warn('[Search] локальная медиатека недоступна', e);
           searchNotice = 'Не получилось проверить файлы на компьютере — онлайн-поиск продолжается.';
@@ -158,7 +199,7 @@
           });
         }
         const [tracksOutcome, playlistsOutcome] = await Promise.allSettled([
-          performSearchDetailed(query),
+          performSearchDetailed(query, { tolerant: isMobile }),
           isMobile ? Promise.resolve([] as any[]) : playlistRequest,
         ]);
 
@@ -179,6 +220,8 @@
             : 'Онлайн-каталог сейчас недоступен.';
         } else if (tracksOutcome.value.fallbackUsed) {
           searchNotice = 'Яндекс Музыка не ответила — временно показаны результаты SoundCloud.';
+        } else if (tracksOutcome.value.correctedQuery) {
+          searchNotice = `Результаты для «${tracksOutcome.value.correctedQuery}».`;
         } else if (playlistsOutcome.status === 'rejected') {
           searchNotice = 'Треки найдены, но плейлисты SoundCloud сейчас не загрузились.';
         }
@@ -215,12 +258,19 @@
     resultView = 'all';
     visibleTrackLimit = SEARCH_PAGE_SIZE;
     if ($searchQuery.trim()) scheduleSearch($searchQuery, 0);
+    suggest($searchQuery);
   }
 
   function handleSearchKeydown(event: KeyboardEvent) {
+    if (isMobile && suggestionsOpen && suggestions.length && (event.key === 'ArrowDown' || event.key === 'ArrowUp')) {
+      event.preventDefault();
+      suggestionIndex = (suggestionIndex + (event.key === 'ArrowDown' ? 1 : -1) + suggestions.length) % suggestions.length;
+      return;
+    }
     if (event.key === 'Enter') {
       event.preventDefault();
-      scheduleSearch($searchQuery, 0);
+      if (suggestionsOpen && suggestionIndex >= 0) chooseSuggestion(suggestions[suggestionIndex]);
+      else { suggestionsOpen = false; scheduleSearch($searchQuery, 0); searchInput?.blur(); }
     } else if (event.key === 'Escape' && $searchQuery) {
       event.preventDefault();
       clearSearch();
@@ -228,6 +278,7 @@
   }
 
   function clearSearch() {
+    ++suggestionGeneration; clearTimeout(suggestionTimer); suggestionController?.abort(); suggestions = []; suggestionsOpen = false;
     scheduleSearch('', 0);
   }
 
@@ -250,6 +301,7 @@
   }
 
   function sourceLabel(track: any) {
+    if (track?.fromCollection) return 'В коллекции';
     const source = sourceKind(track);
     if (source === 'local') return 'На компьютере';
     return source === 'yandex' ? 'Яндекс Музыка' : 'SoundCloud';
@@ -260,10 +312,7 @@
   }
 
   function normalizeSearchValue(value: unknown) {
-    return `${value ?? ''}`
-      .toLocaleLowerCase('ru')
-      .replace(/[^\p{L}\p{N}]+/gu, ' ')
-      .trim();
+    return normalizeSearchText(value);
   }
 
   function resultKey(track: any) {
@@ -282,6 +331,7 @@
     else if (artist.startsWith(needle)) score += 360;
     else if (artist.includes(needle)) score += 180;
     if (sourceKind(track) === 'local') score += 12;
+    if (isMobile) score += searchMatchScore(`${track.title} ${track.artist}`, query);
     return score - order * 0.01;
   }
 
@@ -298,8 +348,8 @@
             artistAvatarUrl: track.artistAvatarUrl || onlineTwin.artistAvatarUrl,
             duration: track.duration || onlineTwin.duration,
             albumTitle: track.albumTitle || onlineTwin.albumTitle,
-            source: 'Локальный',
-            isLocal: true
+            source: track.source,
+            isLocal: track.isLocal
           }
         : track);
     }
@@ -450,6 +500,12 @@
     <SearchIcon size={23} aria-hidden="true" />
     <input
       type="search"
+      bind:this={searchInput}
+      role={isMobile ? 'combobox' : undefined}
+      aria-autocomplete={isMobile ? 'list' : undefined}
+      aria-expanded={isMobile ? suggestionsOpen && suggestions.length > 0 : undefined}
+      aria-controls={isMobile ? 'mobile-search-suggestions' : undefined}
+      aria-activedescendant={suggestionsOpen && suggestionIndex >= 0 ? `mobile-suggestion-${suggestionIndex}` : undefined}
       aria-label="Поиск музыки"
       autocomplete="off"
       spellcheck="false"
@@ -457,6 +513,8 @@
       bind:value={$searchQuery}
       on:input={handleSearch}
       on:keydown={handleSearchKeydown}
+      on:focus={() => { if (isMobile && $searchQuery.trim()) suggest($searchQuery); }}
+      on:blur={(event) => { if (!(event.relatedTarget instanceof HTMLElement && event.relatedTarget.closest('.mobile-search-suggestions'))) suggestionsOpen = false; }}
     />
     <div class="search-command-actions">
       {#if isLoading}<Loader2 size={17} class="search-command-spinner" aria-label="Ищу" />{/if}
@@ -467,6 +525,12 @@
       {/if}
     </div>
   </div>
+
+  {#if isMobile && suggestionsOpen && suggestions.length}
+    <div class="mobile-search-suggestions" id="mobile-search-suggestions" role="listbox" aria-label="Подсказки поиска" use:mobileReveal={true}>
+      {#each suggestions as text, index}<button id={`mobile-suggestion-${index}`} type="button" role="option" aria-selected={suggestionIndex === index} on:click={() => chooseSuggestion(text)}><SearchIcon size={17} aria-hidden="true" /><span>{text}</span></button>{/each}
+    </div>
+  {/if}
 
   <div class="search-command-foot">
       <span>{isLoading ? 'Сначала покажу музыку с компьютера, а затем добавлю результаты из каталога' : 'Enter — найти сразу · Esc — очистить строку'}</span>

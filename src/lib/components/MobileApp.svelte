@@ -3,10 +3,12 @@
   import { isIOS } from '$lib/mobile';
   import { invoke } from '@tauri-apps/api/core';
   import { listen } from '@tauri-apps/api/event';
-  import { Home, Search as SearchIcon, Library as LibraryIcon, Settings as SettingsIcon, ArrowLeft, Music2, RefreshCw, Heart, Play, ArrowUpRight, Download, MoreHorizontal } from 'lucide-svelte';
+  import { Home, Radio, Search as SearchIcon, Library as LibraryIcon, Settings as SettingsIcon, ArrowLeft, Music2, RefreshCw, Heart, Play, ArrowUpRight, Download, MoreHorizontal } from 'lucide-svelte';
   import { currentView, currentArtist, currentTrack, isPlaying, queue, likedTracks, settings, notify } from '$lib/stores';
   import { checkMobileUpdate, mobileUpdateState, openMobileUpdate } from '$lib/mobileUpdates';
   import { mobileReveal } from '$lib/actions/mobileReveal';
+  import { mobilePageMotion } from '$lib/actions/mobilePageMotion';
+  import { openMobileWave } from '$lib/mobileWaveNavigation';
   import { mobileSwipeBack } from '$lib/actions/mobileSwipeBack';
   import { initializeMobileNavigation, pushMobileHistory, mobileCanGoBack } from '$lib/mobileNavigation';
   import { afterMobilePaint } from '$lib/utils/mobilePaint';
@@ -15,48 +17,38 @@
   import { mobileDepth } from '$lib/actions/mobileDepth';
   import { mobileTrackKey, mobileTrackMenu, openMobileTrackMenu, stopScWave } from '$lib/mobileTracks';
   import Player from './Player.svelte';
-  import Search from './Search.svelte';
+  import MobileSearch from './MobileSearch.svelte';
   import Library from './MobileLibrary.svelte';
   import Lyrics from './Lyrics.svelte';
   import MobileArtistPage from './MobileArtistPage.svelte';
   import Notifications from './Notifications.svelte';
   import MobileSettings from './MobileSettings.svelte';
   import MobileWave from './MobileWave.svelte';
+  import MobileRecent from './MobileRecent.svelte';
   import MobileTrackMenu from './MobileTrackMenu.svelte';
   import MobileEqualizer from './MobileEqualizer.svelte';
   import ArtistTag from './ArtistTag.svelte';
   import { coverUrlAtSize, coverUrlForTrack, downloadedCoverCache, handleArtworkError, handleArtworkLoad } from '$lib/offlineCovers';
-  function waveTransition(_node: HTMLElement, _params: unknown, options: { direction: 'in' | 'out' | 'both' }) {
-    const reduced = $settings.mobileMotion === false || matchMedia('(prefers-reduced-motion: reduce)').matches;
-    return { duration: reduced ? 0 : options.direction === 'out' ? 180 : 260, easing: (t: number) => 1 - Math.pow(1 - t, 4), css: (t: number) => `opacity:${t};transform:translateY(${(1 - t) * 24}px)` };
-  }
   let { tracks, loading, error, retry }: { tracks: any[]; loading: boolean; error: string | null; retry: () => void } = $props();
   const tabs = [
-    { id: 'home', label: 'Главная', icon: Home },
-    { id: 'search', label: 'Поиск', icon: SearchIcon },
+    { id: 'wave', label: 'Моя Волна', icon: Radio },
+    { id: 'home', label: 'Главное', icon: Home },
     { id: 'library', label: 'Медиатека', icon: LibraryIcon },
     { id: 'settings', label: 'Настройки', icon: SettingsIcon }
   ] as const;
   let main: HTMLElement;
   let shell: HTMLElement;
-  let visited = $state<string[]>(['home']);
-  let readyView = $state<string>('home');
+  let visited = $state<string[]>(['wave', 'home']);
+  let readyView = $state<string>('wave');
+  let direction = $state(1);
+  const activeTab = $derived($currentView === 'search' ? 'home' : $currentView);
   let keyboardInput = $state(false);
   let nativeNavigationEnabled = $state(false);
   let nativeNavigationReady = $state(false);
   let nativeNavigationVisible = $state(true);
   let nativeUpdates: Promise<unknown> = Promise.resolve();
   let cancelMount = () => {};
-  let waveAutoplayRequested = false;
-  function openWave() {
-    waveAutoplayRequested = true;
-    navigate('wave');
-  }
-  function consumeWaveAutoplayRequest(): boolean {
-    const requested = waveAutoplayRequested;
-    waveAutoplayRequested = false;
-    return requested;
-  }
+  function closeSearch() { if (history.state?.mobileView === 'search' && $mobileCanGoBack) history.back(); else navigate('home'); }
   function nativeTint(): number[] {
     const context = document.createElement('canvas').getContext('2d');
     if (!context) return [1, .533, .302];
@@ -69,7 +61,7 @@
     if (!isIOS || !nativeNavigationEnabled) return;
     // Resolve the same accent as the WebView after theme changes.
     $settings.theme;
-    const index = Math.max(0, tabs.findIndex(tab => tab.id === $currentView));
+    const index = Math.max(0, tabs.findIndex(tab => tab.id === activeTab));
     const visible = nativeNavigationVisible && !$mobileTrackMenu;
     const tint = nativeTint();
     nativeUpdates = nativeUpdates.then(() => invoke<boolean>('ios_navigation_update', { index, visible, tint }))
@@ -115,18 +107,20 @@
     void checkMobileUpdate();
     const checkOnResume = () => { if (!document.hidden) void checkMobileUpdate(); };
     document.addEventListener('visibilitychange', checkOnResume);
-    currentView.set('home');
-    const releaseHistory = initializeMobileNavigation(shell);
+    currentView.set('wave');
+    const releaseHistory = initializeMobileNavigation(shell, 'wave');
     let restoring = false;
     let previous = $currentView;
     const release = currentView.subscribe(view => {
-      if (view !== 'wave') waveAutoplayRequested = false;
+      const beforeIndex = tabs.findIndex(tab => tab.id === (previous === 'search' ? 'home' : previous));
+      const afterIndex = tabs.findIndex(tab => tab.id === (view === 'search' ? 'home' : view));
+      direction = beforeIndex >= 0 && afterIndex >= 0 && beforeIndex !== afterIndex ? Math.sign(afterIndex - beforeIndex) : view === 'search' ? 1 : previous === 'search' ? -1 : 1;
       cancelMount();
       if (visited.includes(view)) readyView = view;
       else {
         readyView = '';
         cancelMount = afterMobilePaint(() => {
-          if (tabs.some(tab => tab.id === view)) visited = [...visited, view];
+          if (tabs.some(tab => tab.id === view) || view === 'search') visited = [...visited, view];
           readyView = view;
         });
       }
@@ -137,7 +131,7 @@
     const back = (e: PopStateEvent) => {
       restoring = true;
       if (e.state?.mobileArtist) currentArtist.set(e.state.mobileArtist);
-      currentView.set(e.state?.mobileView || 'home');
+      currentView.set(e.state?.mobileView || 'wave');
       restoring = false;
     };
     window.addEventListener('popstate', back);
@@ -189,7 +183,7 @@
 <div bind:this={shell} class="mobile-app" data-input={keyboardInput ? 'keyboard' : 'pointer'} data-view={$currentView} use:mobileDepth={{ enabled: $settings.mobileDepthMotion === true && $settings.mobileMotion !== false, view: $currentView }} data-motion={$settings.mobileMotion === false ? 'off' : 'on'} data-blur={$settings.mobileBlur ? 'on' : 'off'} data-text-size={$settings.mobileTextSize} data-text-weight={$settings.mobileTextWeight}>
   <div class="mobile-navigation-stage" use:mobileSwipeBack>
   <div class="mobile-navigation-surface" data-view={$currentView}>
-  <header class="mobile-header">
+  <header class="mobile-header" hidden={['wave', 'home', 'search', 'library', 'settings', 'artist'].includes($currentView)}>
     {#if !tabs.some(t => t.id === $currentView)}
       <button class="mobile-icon-button" aria-label="Назад" onclick={() => history.back()}><ArrowLeft size={24} /></button>
     {:else}
@@ -198,9 +192,9 @@
     <span>Lomify<span class="mobile-brand-accent">NEXT</span></span>
   </header>
   <main bind:this={main} class="mobile-content" class:has-track={!!$currentTrack} aria-busy={readyView !== $currentView} tabindex="-1">
-    <div class="mobile-pane" hidden={$currentView !== 'home'} use:mobileReveal={$currentView === 'home'}>
+    <div class="mobile-pane" data-pane="home" use:mobilePageMotion={{ active: $currentView === 'home', ready: true, direction, enabled: $settings.mobileMotion !== false }}>
       <section class="mobile-home">
-        <h1>Главная</h1>
+        <h1>Главное</h1>
         {#if $mobileUpdateState.status === 'available' && $mobileUpdateState.update}
           <button class="mobile-update-banner" onclick={() => openMobileUpdate($mobileUpdateState.update!.apkUrl).catch(() => notify('Не удалось открыть загрузку APK. Попробуй через настройки.', 'error'))}>
             <span class="mobile-update-banner-icon"><Download size={20} aria-hidden="true" /></span>
@@ -208,8 +202,8 @@
             <ArrowUpRight size={19} aria-hidden="true" />
           </button>
         {/if}
-        <button class="mobile-search-shortcut" onclick={() => navigate('search')}><SearchIcon size={22} /><span>Трек, исполнитель или альбом</span></button>
-        <button class="mobile-wave-shortcut" aria-label={`${$settings.mobileWaveName === 'wave' ? 'Моя Волна' : 'Моя Тусня'} — открыть и слушать`} onclick={openWave}>
+        <button class="mobile-search-shortcut" aria-expanded={false} onclick={() => navigate('search')}><SearchIcon size={22} /><span>Трек, исполнитель или альбом</span></button>
+        <button class="mobile-wave-shortcut" aria-label={`${$settings.mobileWaveName === 'wave' ? 'Моя Волна' : 'Моя Тусня'} — открыть и слушать`} onclick={() => openMobileWave()}>
           <span class="mobile-wave-shortcut-copy">
             <strong>{$settings.mobileWaveName === 'wave' ? 'Моя Волна' : 'Моя Тусня'}</strong>
             <small>{$settings.searchSource === 'yandex' ? 'Яндекс Музыка' : 'SoundCloud'}</small>
@@ -228,6 +222,7 @@
           <span><strong>Любимые треки</strong><small>{$likedTracks.length} в коллекции</small></span>
           <ArrowLeft size={20} style="transform:rotate(180deg)" />
         </button>
+        <MobileRecent />
         <div class="mobile-section-heading"><h2>Для тебя <small>{$settings.searchSource === 'yandex' ? 'Яндекс Музыка' : 'SoundCloud'}</small></h2><button class="mobile-icon-button" aria-label="Обновить рекомендации" disabled={loading} onclick={retry}><RefreshCw size={20} /></button></div>
         {#if loading}
           <p class="mobile-hint" role="status">Загружаем музыку…</p>
@@ -253,17 +248,17 @@
       </section>
     </div>
     {#each tabs.filter(tab => tab.id !== 'home') as tab (tab.id)}
-        <div class="mobile-pane" hidden={$currentView !== tab.id} use:mobileReveal={$currentView === tab.id ? `${tab.id}:${visited.includes(tab.id)}` : false}>
+        <div class="mobile-pane" class:mobile-wave-pane={tab.id === 'wave'} data-pane={tab.id} use:mobilePageMotion={{ active: $currentView === tab.id, ready: visited.includes(tab.id), direction, enabled: $settings.mobileMotion !== false }}>
           {#if visited.includes(tab.id)}
-          {#if tab.id === 'search'}<Search />
+          {#if tab.id === 'wave'}<MobileWave />
           {:else if tab.id === 'library'}<Library />
           {:else}<MobileSettings />{/if}
           {:else if $currentView === tab.id}{@render opening(tab.label)}{/if}
         </div>
     {/each}
-    {#if $currentView === 'wave'}
-      <div class="mobile-pane mobile-wave-pane" transition:waveTransition onintrostart={(event) => (event.currentTarget as HTMLElement).inert = false} onoutrostart={(event) => (event.currentTarget as HTMLElement).inert = true}>{#if readyView === 'wave'}<MobileWave {consumeWaveAutoplayRequest} />{:else}{@render opening($settings.mobileWaveName === 'wave' ? 'Моя Волна' : 'Моя Тусня')}{/if}</div>
-    {/if}
+    <div class="mobile-pane mobile-search-pane" data-pane="search" use:mobilePageMotion={{ active: $currentView === 'search', ready: visited.includes('search'), direction, enabled: $settings.mobileMotion !== false }}>
+      {#if visited.includes('search')}<div class="mobile-search-topbar"><button class="mobile-icon-button" aria-label="Свернуть поиск" onclick={closeSearch}><ArrowLeft size={23} aria-hidden="true" /></button><span>Поиск</span><button class="mobile-text-button" onclick={closeSearch}>Закрыть</button></div><MobileSearch />{/if}
+    </div>
     {#if $currentView === 'equalizer'}<div class="mobile-pane" use:mobileReveal={readyView === 'equalizer' ? 'ready' : 'opening'}>{#if readyView === 'equalizer'}<MobileEqualizer />{:else}{@render opening('Эквалайзер')}{/if}</div>{/if}
     {#if $currentView === 'lyrics' || $currentView === 'artist'}
       <div class="mobile-pane" class:mobile-artist-pane={$currentView === 'artist'} use:mobileReveal={`${$currentView}:${readyView}`}>
@@ -277,9 +272,9 @@
   <Player mobile />
   {#if !nativeNavigationReady}
   <nav class="mobile-nav" aria-label="Основные разделы">
-    <span class="mobile-nav-indicator" aria-hidden="true" style:transform={`translateX(${Math.max(0, tabs.findIndex(tab => tab.id === $currentView)) * 100}%)`} style:opacity={tabs.some(tab => tab.id === $currentView) ? 1 : 0}></span>
+    <span class="mobile-nav-indicator" aria-hidden="true" style:transform={`translateX(${Math.max(0, tabs.findIndex(tab => tab.id === activeTab)) * 100}%)`} style:opacity={tabs.some(tab => tab.id === activeTab) ? 1 : 0}></span>
     {#each tabs as tab}
-      <button class:active={$currentView === tab.id} aria-current={$currentView === tab.id ? 'page' : undefined} onclick={() => navigate(tab.id)}><tab.icon size={23} aria-hidden="true" /><span>{tab.label}</span></button>
+      <button class:active={activeTab === tab.id} aria-current={activeTab === tab.id ? 'page' : undefined} onclick={() => navigate(tab.id)}><tab.icon size={23} aria-hidden="true" /><span>{tab.id === 'wave' && $settings.mobileWaveName !== 'wave' ? 'Моя Тусня' : tab.label}</span></button>
     {/each}
   </nav>
   {/if}

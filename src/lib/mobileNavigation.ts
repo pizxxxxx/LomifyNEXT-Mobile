@@ -41,11 +41,11 @@ function capture() {
   while (snapshots.size > 8) snapshots.delete(snapshots.keys().next().value!);
 }
 
-export function initializeMobileNavigation(node: HTMLElement) {
+export function initializeMobileNavigation(node: HTMLElement, initialView = 'home') {
   root = node;
   position = 0;
   snapshots.clear();
-  history.replaceState({ mobileView: 'home', mobilePosition: 0 }, '');
+  history.replaceState({ mobileView: initialView, mobilePosition: 0 }, '');
   mobileCanGoBack.set(false);
   const onPop = (event: PopStateEvent) => {
     capture();

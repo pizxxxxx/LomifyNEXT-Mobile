@@ -46,9 +46,9 @@ int lomify_navigation_update(void *pointer, int32_t selected, int visible,
             navigation.overrideUserInterfaceStyle = UIUserInterfaceStyleDark;
             if (@available(iOS 18.0, *)) navigation.mode = UITabBarControllerModeTabBar;
             if (@available(iOS 26.0, *)) navigation.tabBarMinimizeBehavior = UITabBarMinimizeBehaviorNever;
-            NSArray<NSString *> *titles = @[@"Главная", @"Поиск", @"Медиатека", @"Настройки"];
-            NSArray<NSString *> *symbols = @[@"house", @"magnifyingglass", @"books.vertical", @"gearshape"];
-            NSArray<NSString *> *selectedSymbols = @[@"house.fill", @"magnifyingglass", @"books.vertical.fill", @"gearshape.fill"];
+            NSArray<NSString *> *titles = @[@"Моя Волна", @"Главное", @"Медиатека", @"Настройки"];
+            NSArray<NSString *> *symbols = @[@"dot.radiowaves.left.and.right", @"house", @"books.vertical", @"gearshape"];
+            NSArray<NSString *> *selectedSymbols = @[@"dot.radiowaves.left.and.right", @"house.fill", @"books.vertical.fill", @"gearshape.fill"];
             UIImageSymbolConfiguration *iconStyle = [UIImageSymbolConfiguration configurationWithPointSize:21 weight:UIImageSymbolWeightRegular];
             NSMutableArray<UIViewController *> *controllers = [NSMutableArray new];
             for (NSInteger index = 0; index < 4; index++) {

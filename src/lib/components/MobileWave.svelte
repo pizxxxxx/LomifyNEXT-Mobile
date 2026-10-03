@@ -1,14 +1,16 @@
 <script lang="ts">
-  import { onDestroy, onMount } from 'svelte';
+  import { onDestroy, onMount, untrack } from 'svelte';
   import { invoke } from '@tauri-apps/api/core';
   import { listen } from '@tauri-apps/api/event';
   import { readFftInto, FFT_BINS } from '$lib/fft';
   import { MobileWaveMotion } from '$lib/mobileWaveMotion';
-  import { ArrowLeft, SlidersHorizontal, ChevronDown, RefreshCw, ArrowUpRight, Loader2, Music2 } from 'lucide-svelte';
+  import { X, SlidersHorizontal, ChevronDown, RefreshCw, ArrowUpRight, Loader2, Music2 } from 'lucide-svelte';
   import { settings, currentTrack, currentView, isPlaying, progress, lyricsStatus } from '$lib/stores';
   import { getLyrics } from '$lib/api';
   import { handleArtworkError, handleArtworkLoad } from '$lib/offlineCovers';
-  import { startWave, waveActive } from '$lib/wave';
+  import { startWave, waveActive, waveSeed, type WaveSeed } from '$lib/wave';
+  import { mobileWaveRequest } from '$lib/mobileWaveNavigation';
+  import { mobileReveal } from '$lib/actions/mobileReveal';
   import { WAVE_GENRES, WAVE_LANGUAGES, describeWaveFilters } from '$lib/waveFilters';
   import { mobileConnectionRequest } from '$lib/mobile';
   import MusicServiceIcon from './MusicServiceIcon.svelte';
@@ -16,7 +18,6 @@
   import { Play as PlayData, Pause as PauseData } from 'lucide';
   import { isScWaveTrack, refillScWave, scWaveActive, startScWave, stopScWave } from '$lib/mobileTracks';
 
-  let { consumeWaveAutoplayRequest }: { consumeWaveAutoplayRequest?: () => boolean } = $props();
   let busy = $state(false);
   let error = $state('');
   let tuning = $state(false);
@@ -25,6 +26,8 @@
   let content = $state($settings.waveContent || 'all');
   let controller: AbortController | null = null;
   let timeout: ReturnType<typeof setTimeout> | undefined;
+  let requestedSeed = $state<WaveSeed | null | undefined>(undefined);
+  const seed = $derived(requestedSeed === undefined ? $waveSeed : requestedSeed);
   const source = $derived($settings.searchSource === 'yandex' ? 'yandex' : 'soundcloud');
   const waveName = $derived($settings.mobileWaveName === 'wave' ? 'Моя волна' : 'Моя тусня');
   const waveObject = $derived($settings.mobileWaveName === 'wave' ? 'мою волну' : 'мою тусню');
@@ -33,7 +36,20 @@
   const filters = $derived(describeWaveFilters($settings));
   const canListen = $derived(source === 'soundcloud' || !!$settings.yandexToken);
   $effect(() => {
-    if ($currentView !== 'wave') controller?.abort();
+    if ($currentView !== 'wave') {
+      controller?.abort(); clearTimeout(timeout); controller = null; busy = false; requestedSeed = undefined;
+    }
+  });
+  $effect(() => {
+    const request = $mobileWaveRequest;
+    if (!request || $currentView !== 'wave') return;
+    untrack(() => {
+      mobileWaveRequest.set(null);
+      controller?.abort(); clearTimeout(timeout); controller = null; busy = false;
+      requestedSeed = request.seed;
+      if (request.resume && active) { if (!$isPlaying) isPlaying.set(true); requestedSeed = undefined; }
+      else void collect(request.seed);
+    });
   });
   // Original line geometry, computed once. Music only changes the layer transforms.
   const ribbons = Array.from({ length: 9 }, (_, index) => Array.from({ length: 121 }, (_, point) => {
@@ -62,7 +78,7 @@
     }
   }
   $effect(() => {
-    const enabled = $settings.mobileVisualizer !== false && $settings.mobileMotion !== false && !reduceMotion && playing && !pageHidden;
+    const enabled = $currentView === 'wave' && $settings.mobileVisualizer !== false && $settings.mobileMotion !== false && !reduceMotion && playing && !pageHidden;
     void invoke('audio_visualizer_set_enabled', { enabled }).catch(() => {});
     if (!enabled) resetWaveMotion();
   });
@@ -76,7 +92,7 @@
     const generation = ++lyricGeneration;
     lyricTimeline = [];
     lyricLine = '';
-    if (!track || !enabled || $lyricsStatus !== 'found') return;
+    if ($currentView !== 'wave' || !track || !enabled || $lyricsStatus !== 'found') return;
     void getLyrics(track.title, track.artist, track).then(text => {
       if (generation !== lyricGeneration || !text) return;
       lyricTimeline = (text as string).split('\n').map((line: string) => {
@@ -95,7 +111,7 @@
     syncVisualizerVisibility();
     syncMotionPreference();
     void listen<number[]>('audio:fft', event => {
-        if (!visual || pageHidden || reduceMotion || !playing || $settings.mobileVisualizer === false || $settings.mobileMotion === false) return;
+        if ($currentView !== 'wave' || !visual || pageHidden || reduceMotion || !playing || $settings.mobileVisualizer === false || $settings.mobileMotion === false) return;
         const now = performance.now();
         if (now - lastFftAt < 45) return;
         if (!readFftInto(event.payload, fft)) return;
@@ -111,7 +127,7 @@
         voiceGlow.style.opacity = (.45 + motion.body * .27).toFixed(3);
       }).then(stop => { if (disposed) stop(); else unlistenFft = stop; }).catch(() => {});
     const unsubscribeProgress = progress.subscribe(position => {
-      if (!lyricTimeline.length || !$settings.mobileWaveLyrics) return;
+      if ($currentView !== 'wave' || !lyricTimeline.length || !$settings.mobileWaveLyrics) return;
       let found = '';
       for (const line of lyricTimeline) {
         if (line.time > position - .08) break;
@@ -119,12 +135,6 @@
       }
       if (found !== lyricLine) lyricLine = found;
     });
-    // Only the home shortcut requests playback; history restoration never does.
-    if (consumeWaveAutoplayRequest?.() && canListen) {
-      if (active) {
-        if (!$isPlaying) isPlaying.set(true);
-      } else void collect();
-    }
     return () => {
       disposed = true;
       document.removeEventListener('visibilitychange', syncVisualizerVisibility);
@@ -140,9 +150,9 @@
     currentView.set('settings');
   }
   function cancel(message = 'Загрузка отменена. Можно попробовать ещё раз.') {
-    controller?.abort(); controller = null; clearTimeout(timeout); busy = false; error = message;
+    controller?.abort(); controller = null; clearTimeout(timeout); busy = false; requestedSeed = undefined; error = message;
   }
-  async function collect() {
+  async function collect(seedTrack: WaveSeed | null = seed) {
     if (busy) return;
     if (source === 'soundcloud') {
       busy = true; error = '';
@@ -167,10 +177,10 @@
     const request = new AbortController(); controller = request;
     timeout = setTimeout(() => cancel('Яндекс долго не отвечает. Проверь интернет или ослабь фильтры и повтори.'), 25000);
     try {
-      const started = await startWave({ signal: request.signal });
+      const started = await startWave({ signal: request.signal, seedTrack: seedTrack ? { ...seedTrack, source: 'yandex' } : null });
       if (!request.signal.aborted && !started) error = `Не удалось запустить ${waveObject}. Проверь подключение и подписку Плюс. Если выбраны фильтры, попробуй их сбросить.`;
     } finally {
-      if (controller === request) { clearTimeout(timeout); controller = null; busy = false; }
+      if (controller === request) { clearTimeout(timeout); controller = null; busy = false; requestedSeed = undefined; }
     }
   }
   function primary() {
@@ -183,14 +193,24 @@
     tuning = false;
     void collect();
   }
+  function resetSeed() {
+    controller?.abort(); clearTimeout(timeout); controller = null; busy = false;
+    requestedSeed = null;
+    void collect(null);
+  }
   onDestroy(() => { controller?.abort(); clearTimeout(timeout); });
 </script>
 
 <section class="mobile-wave-page">
   <div class="mobile-wave-toolbar">
-    <button class="mobile-icon-button" aria-label="Назад" onclick={() => history.back()}><ArrowLeft size={22} /></button>
     <span><MusicServiceIcon service={source} size={19} />{source === 'soundcloud' ? 'SoundCloud' : 'Яндекс Музыка'}</span>
   </div>
+  {#if seed && source === 'yandex'}
+    <div class="mobile-wave-seed" use:mobileReveal={seed.id}>
+      <span><small>По треку</small><strong>{seed.title}</strong></span>
+      <button class="mobile-icon-button" aria-label="Закрыть волну по треку и включить обычную" onclick={resetSeed}><X size={20} aria-hidden="true" /></button>
+    </div>
+  {/if}
   <div class="mobile-wave-stage">
     <div bind:this={visual} class="mobile-wave-ribbons" aria-hidden="true">
       <span bind:this={bassGlow} class="mobile-wave-ribbon-layer">
@@ -230,7 +250,7 @@
           <span class="mobile-wave-current-copy"><strong>{$currentTrack.title}</strong><small>{$currentTrack.artist}</small></span><ArrowUpRight size={19} />
         </button>
         {#if lyricLine && $settings.mobileWaveLyrics}<button class="mobile-wave-lyric" onclick={() => window.dispatchEvent(new Event('lomify:open-player'))} aria-label="Открыть текст песни в плеере">{lyricLine}</button>{/if}
-        <button class="mobile-text-button mobile-wave-refresh" disabled={busy} onclick={collect}><RefreshCw size={16} />Собрать заново</button>
+        <button class="mobile-text-button mobile-wave-refresh" disabled={busy} onclick={() => void collect()}><RefreshCw size={16} />Собрать заново</button>
       </div>
     {:else}<p class="mobile-wave-footer">{source === 'soundcloud' ? 'Из твоих любимых треков SoundCloud' : 'Музыка, подобранная для тебя'}</p>{/if}
   {/if}

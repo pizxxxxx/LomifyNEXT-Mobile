@@ -1,7 +1,9 @@
 <script lang="ts">
   import { onDestroy, untrack, tick } from 'svelte';
-  import { slide } from 'svelte/transition';
-  import { Heart, ListPlus, EyeOff, Play, Pause, X, Plus, Music2, Download, Trash2, UserRound, Info, ArrowLeft } from 'lucide-svelte';
+  import { Heart, Radio, ListPlus, EyeOff, Play, Pause, X, Plus, Music2, Download, Trash2, UserRound, Info, ArrowLeft, Check, ChevronRight } from 'lucide-svelte';
+  import { mobileReveal } from '$lib/actions/mobileReveal';
+  import { openMobileWave } from '$lib/mobileWaveNavigation';
+  import { waveSeedForTrack } from '$lib/wave';
   import { get } from 'svelte/store';
   import { currentTrack, isPlaying, likedTracks, playlists, settings, listenStats } from '$lib/stores';
   import { loadMobileTrackInfo, mobileTrackInfoRows } from '$lib/mobileTrackInfo';
@@ -10,7 +12,7 @@
   import { addMobileTrackToPlaylist, createMobilePlaylist, hideMobileTrack, mobileTrackMenu, mobileTrackMenuPlaylistId, queueMobileTrackNext, removeMobileTrackFromPlaylist } from '$lib/mobileTracks';
   import { notify } from '$lib/stores';
   import { mobileDownloadJobs, queueMobileDownloads, removeMobileDownload } from '$lib/mobileDownloads';
-  import { downloadedCoverCache, coverUrlForTrack, handleArtworkError, handleArtworkLoad } from '$lib/offlineCovers';
+  import { downloadedCoverCache, coverUrlAtSize, coverUrlForTrack, handleArtworkError, handleArtworkLoad } from '$lib/offlineCovers';
   import { buildTrackUrn } from '$lib/utils/trackUrn';
   import { splitArtists } from '$lib/utils/artists';
   import { withCount } from '$lib/utils/plural';
@@ -36,8 +38,23 @@
   let menuAnimation: Animation | null = null;
   let backdropAnimation: Animation | null = null;
   let menuGeneration = 0;
+  let motionFrame = 0;
+  let afterClose: (() => void) | null = null;
   let requestGeneration = 0;
   const liked = $derived(selected ? isTrackLiked($likedTracks, selected) : false);
+  const downloaded = $derived(selected ? $downloadedCoverCache.cachedUrns.has(buildTrackUrn(selected)) : false);
+  const downloadBusy = $derived(selected && !!$mobileDownloadJobs[buildTrackUrn(selected)] && $mobileDownloadJobs[buildTrackUrn(selected)].status !== 'error');
+  const trackWave = $derived(waveSeedForTrack(selected));
+
+  function changeLike() {
+    if (liked) { removeMobileLikedTrack(selected); notify('Убрано из любимых только в Lomify', 'info'); }
+    else { setTrackLiked(selected, true); notify('Добавлено в любимые', 'success'); }
+  }
+  function startTrackWave() {
+    const track = selected;
+    afterClose = () => openMobileWave(track);
+    close();
+  }
 
   function stopPreview() {
     ++previewGeneration;
@@ -108,33 +125,43 @@
     const wasOpen = dialog.open;
     const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
     const motionOff = $settings.mobileMotion === false;
-    const duration = motionOff ? 0 : reduced ? 120 : open ? 220 : 160;
+    const duration = motionOff || reduced ? 0 : open ? 420 : 280;
     const fromOpacity = wasOpen ? getComputedStyle(dialog).opacity : '0';
-    const fromTransform = wasOpen ? getComputedStyle(dialog).transform : reduced ? 'none' : 'translateY(12%)';
+    const fromTransform = wasOpen ? getComputedStyle(dialog).transform : 'translate3d(0,48px,0)';
     const backdropOpacity = wasOpen ? getComputedStyle(dialog, '::backdrop').opacity : '0';
     menuAnimation?.cancel();
     backdropAnimation?.cancel();
+    cancelAnimationFrame(motionFrame);
     menuAnimation = backdropAnimation = null;
     if (open && !wasOpen) dialog.showModal();
     if (!open && !wasOpen) { selected = null; return; }
     dialog.inert = !open;
     const finish = () => {
       if (generation !== menuGeneration) return;
-      if (!open) { dialog.close(); selected = null; }
+      const navigation = !open ? afterClose : null;
+      if (!open) { afterClose = null; dialog.close(); selected = null; }
       menuAnimation?.cancel();
       backdropAnimation?.cancel();
       menuAnimation = backdropAnimation = null;
+      dialog.style.willChange = '';
+      navigation?.();
     };
     if (!duration) { finish(); return; }
     const easing = getComputedStyle(dialog).getPropertyValue('--ease-drawer').trim() || 'cubic-bezier(0.32, 0.72, 0, 1)';
     menuAnimation = dialog.animate([
       { opacity: fromOpacity, transform: fromTransform },
-      { opacity: open ? 1 : 0, transform: open || reduced ? 'none' : 'translateY(12%)' }
+      { opacity: open ? 1 : 0, transform: open ? 'none' : 'translate3d(0,32px,0)' }
     ], { duration, easing, fill: 'both' });
     backdropAnimation = dialog.animate([{ opacity: backdropOpacity }, { opacity: open ? 1 : 0 }], {
       duration, easing, fill: 'both', pseudoElement: '::backdrop'
     });
     menuAnimation.onfinish = finish;
+    dialog.style.willChange = 'transform, opacity';
+    menuAnimation.pause(); backdropAnimation.pause();
+    motionFrame = requestAnimationFrame(() => { motionFrame = requestAnimationFrame(() => {
+      motionFrame = 0;
+      if (generation === menuGeneration) { menuAnimation?.play(); backdropAnimation?.play(); }
+    }); });
   }
   function addTo(id: string) {
     if (!selected) return;
@@ -148,16 +175,13 @@
     playlistName = '';
     creatingPlaylist = false;
   }
-  function revealDuration(enter: boolean) {
-    return $settings.mobileMotion === false || matchMedia('(prefers-reduced-motion: reduce)').matches
-      ? 0 : enter ? 180 : 120;
-  }
   $effect(() => {
     if (!dialog) return;
     const track = requested;
     const request = ++requestGeneration;
     untrack(() => {
       if (track) {
+        afterClose = null;
         selected = track;
         stopPreview();
         previewStatus = '';
@@ -173,47 +197,56 @@
       else animateMenu(false);
     });
   });
-  onDestroy(() => { ++infoGeneration; ++requestGeneration; ++menuGeneration; menuAnimation?.cancel(); backdropAnimation?.cancel(); stopPreview(); });
+  onDestroy(() => { ++infoGeneration; ++requestGeneration; ++menuGeneration; cancelAnimationFrame(motionFrame); menuAnimation?.cancel(); backdropAnimation?.cancel(); stopPreview(); });
 </script>
 
 <dialog bind:this={dialog} class="mobile-track-dialog" class:no-blur={$settings.mobileBlur === false} onclose={onDialogClose} oncancel={(event) => { event.preventDefault(); close(); }} aria-label="Действия с треком">
   {#if selected}
     <div class="mobile-track-menu-content">
+      <span class="mobile-menu-handle" aria-hidden="true"></span>
       <div class="mobile-menu-heading">
-        <div class="mobile-menu-art" aria-hidden="true"><Music2 size={26} />{#if selected.coverUrl}<img src={coverUrlForTrack(selected, $downloadedCoverCache)} alt="" onerror={(event) => handleArtworkError(event, selected.coverUrl)} onload={handleArtworkLoad} />{/if}</div>
+        <div class="mobile-menu-art" aria-hidden="true"><Music2 size={26} />{#if selected.coverUrl}<img src={coverUrlAtSize(coverUrlForTrack(selected, $downloadedCoverCache), 160)} alt="" decoding="async" onerror={(event) => handleArtworkError(event, selected.coverUrl, 160)} onload={handleArtworkLoad} />{/if}</div>
         <div><h2>{selected.title}</h2><p class="mobile-menu-artist">{selected.artist}</p></div>
         <button class="mobile-icon-button mobile-menu-close" aria-label="Закрыть меню трека" onclick={close}><X size={22} /></button>
       </div>
       {#if showingInfo}
+        <div use:mobileReveal={true}>
         <div class="mobile-track-info-title"><button class="mobile-icon-button" aria-label="Назад к действиям с треком" onclick={backToActions}><ArrowLeft size={22} /></button><h3>О треке</h3></div>
         <dl class="mobile-track-info">{#each infoRows as row}<div><dt>{row.label}</dt><dd>{row.value}</dd></div>{/each}</dl>
         {#if infoTrack?.source === 'yandex'}<p class="mobile-hint">Яндекс Музыка не передаёт число прослушиваний этого трека.</p>{/if}
         {#if infoStatus === 'loading'}<p class="mobile-hint" role="status">Обновляем информацию…</p>
         {:else if infoStatus === 'error'}<p class="mobile-hint" role="status">Не удалось обновить информацию. Показаны сохранённые сведения.</p><button class="mobile-text-button" onclick={showTrackInfo}>Повторить</button>{/if}
+        </div>
       {:else}
-      {#if $settings.mobilePreview}<button class="mobile-menu-preview" onclick={() => previewing ? stopPreview() : void startPreview(selected)}>{#if previewing}<Pause size={18} /> Остановить превью{:else}<Play size={18} /> Слушать превью{/if}</button>{#if previewStatus}<p class="mobile-menu-status" role="status">{previewStatus}</p>{/if}{/if}
+      {#if trackWave}
+        <button class="mobile-menu-wave" onclick={startTrackWave}><Radio size={26} strokeWidth={1.7} aria-hidden="true" /><span><strong>Моя Волна по треку</strong><small>{selected.title}</small></span><ChevronRight size={19} aria-hidden="true" /></button>
+      {/if}
+      <div class="mobile-menu-quick-actions">
+        <button aria-pressed={liked} onclick={changeLike}><span><Heart size={24} strokeWidth={1.7} fill={liked ? 'currentColor' : 'none'} /></span>{liked ? 'Любимое' : 'Нравится'}</button>
+        <button disabled={downloadBusy || downloaded} onclick={() => queueMobileDownloads([selected])}><span>{#if downloaded}<Check size={25} strokeWidth={1.7} />{:else}<Download size={24} strokeWidth={1.7} />{/if}</span>{downloadBusy ? 'Загрузка…' : downloaded ? 'Скачано' : 'Скачать'}</button>
+        {#if $settings.mobilePreview}<button aria-pressed={previewing} onclick={() => previewing ? stopPreview() : void startPreview(selected)}><span>{#if previewing}<Pause size={23} fill="currentColor" strokeWidth={0} />{:else}<Play size={23} fill="currentColor" strokeWidth={0} />{/if}</span>Превью</button>
+        {:else}<button onclick={showTrackInfo}><span><Info size={24} strokeWidth={1.7} /></span>О треке</button>{/if}
+      </div>
+      {#if previewStatus}<p class="mobile-menu-status" role="status">{previewStatus}</p>{/if}
       <div class="mobile-menu-actions">
-        <button onclick={showTrackInfo}><Info size={20} aria-hidden="true" />О треке</button>
         <button class="mobile-menu-next" onclick={() => { queueMobileTrackNext(selected); close(); }}><ListPlus size={20} aria-hidden="true" /><span>В очередь<small>Сыграет следующим</small></span></button>
         {#each splitArtists(selected.artist, selected.artists) as artistName (artistName)}
           <button onclick={() => { close(); goToArtist(artistName); }}><UserRound size={20} aria-hidden="true" /><span>К исполнителю<small>{artistName}</small></span></button>
         {/each}
-        {#if $downloadedCoverCache.cachedUrns.has(buildTrackUrn(selected))}
+        {#if downloaded}
           <button onclick={() => { void removeMobileDownload(selected); close(); }}><Trash2 size={20} />Удалить скачанный файл</button>
-        {:else}
-          <button disabled={!!$mobileDownloadJobs[buildTrackUrn(selected)] && $mobileDownloadJobs[buildTrackUrn(selected)].status !== 'error'} onclick={() => { queueMobileDownloads([selected]); close(); }}><Download size={20} />Скачать на телефон</button>
         {/if}
-        <button onclick={() => { if (liked) { removeMobileLikedTrack(selected); notify('Убрано из любимых только в Lomify', 'info'); } else { setTrackLiked(selected, true); notify('Добавлено в любимые', 'success'); } close(); }}><Heart size={20} fill={liked ? 'currentColor' : 'none'} />{liked ? 'Убрать из любимых' : 'Добавить в любимые'}</button>
         {#if liked && selected.source === 'yandex' && $settings.yandexToken}<button class="mobile-danger" onclick={() => { removeMobileLikedTrack(selected, true); notify('Удаляем лайк и в Яндекс Музыке', 'info'); close(); }}><Trash2 size={20} />Убрать и из Яндекс Музыки</button>{/if}
         {#if $mobileTrackMenuPlaylistId}<button onclick={() => { if (removeMobileTrackFromPlaylist($mobileTrackMenuPlaylistId!, selected)) notify('Трек убран из плейлиста', 'success'); close(); }}><Trash2 size={20} />Убрать из этого плейлиста</button>{/if}
         <button onclick={() => { choosingPlaylist = !choosingPlaylist; creatingPlaylist = false; }} aria-expanded={choosingPlaylist}><ListPlus size={20} />В плейлист</button>
         {#if choosingPlaylist}
-          <div class="mobile-menu-playlists" in:slide|local={{ duration: revealDuration(true) }} out:slide|local={{ duration: revealDuration(false) }}>
+          <div class="mobile-menu-playlists" use:mobileReveal={true}>
             {#each $playlists as playlist}<button onclick={() => addTo(playlist.id)}><span>{playlist.title}</span><small>{withCount(playlist.tracks?.length || 0, 'трек', 'трека', 'треков')}</small></button>{/each}
-            {#if creatingPlaylist}<form in:slide|local={{ duration: revealDuration(true) }} out:slide|local={{ duration: revealDuration(false) }} onsubmit={(event) => { event.preventDefault(); createAndAdd(); }}><label for="mobile-new-playlist">Название плейлиста</label><input id="mobile-new-playlist" bind:value={playlistName} maxlength="80" /><button class="mobile-primary" type="submit" disabled={!playlistName.trim()}>Создать и добавить</button></form>
+            {#if creatingPlaylist}<form use:mobileReveal={true} onsubmit={(event) => { event.preventDefault(); createAndAdd(); }}><label for="mobile-new-playlist">Название плейлиста</label><input id="mobile-new-playlist" bind:value={playlistName} maxlength="80" /><button class="mobile-primary" type="submit" disabled={!playlistName.trim()}>Создать и добавить</button></form>
             {:else}<button onclick={() => creatingPlaylist = true}><Plus size={18} /> Создать плейлист</button>{/if}
           </div>
         {/if}
+        <button onclick={showTrackInfo}><Info size={20} aria-hidden="true" />О треке</button>
         <button onclick={() => { hideMobileTrack(selected); close(); }}><EyeOff size={20} />Не показывать больше</button>
       </div>
       {/if}

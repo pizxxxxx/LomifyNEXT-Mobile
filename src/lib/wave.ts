@@ -20,7 +20,7 @@
 
 import { writable, get } from 'svelte/store';
 import { settings, queue, currentTrack, isPlaying, notify } from './stores';
-import { yandexWaveBatch, yandexWaveFeedback } from './yandex';
+import { WAVE_STATION, yandexWaveBatch, yandexWaveFeedback } from './yandex';
 import {
   describeWaveFilters,
   hasWaveFilters,
@@ -29,6 +29,16 @@ import {
 
 /** Играет ли сейчас волна. Плеер смотрит на это, чтобы докладывать порции. */
 export const waveActive = writable(false);
+export interface WaveSeed { id: string; title: string; artist: string; coverUrl?: string }
+/** The seed of the successfully started session, never a pending request. */
+export const waveSeed = writable<WaveSeed | null>(null);
+let sessionStation = WAVE_STATION;
+
+export function waveSeedForTrack(track: any): WaveSeed | null {
+  if (track?.source !== 'yandex') return null;
+  const id = String(track.id ?? '').split(':')[0];
+  return /^\d+$/.test(id) ? { id, title: track.title || 'Трек', artist: track.artist || '', coverUrl: track.coverUrl } : null;
+}
 
 /** Порция, из которой приехали треки, лежащие сейчас в очереди. */
 let batchId = '';
@@ -78,12 +88,8 @@ export function waveAvailable(state = get(settings)): boolean {
  * Идентификатор порции хранится в самом треке, а не рядом: отметку о треке надо присылать
  * именно в его порцию, а к моменту отметки текущая порция может быть уже следующей.
  */
-function mark(track: any, sourceBatchId = batchId): any {
-  return { ...track, waveBatchId: sourceBatchId };
-}
-
-function occurrenceCount(track: any): number {
-  return sessionOccurrences.get(`${track?.id ?? ''}`) ?? 0;
+function mark(track: any, sourceBatchId = batchId, station = sessionStation): any {
+  return { ...track, waveBatchId: sourceBatchId, waveStationId: station };
 }
 
 function rememberOccurrences(tracks: any[]): void {
@@ -108,7 +114,9 @@ async function filteredWaveBatch(
   rawToken: string,
   prevTrackId: string | number | null | undefined,
   targetCount: number,
-  cancelled: () => boolean = () => false
+  cancelled: () => boolean = () => false,
+  station = sessionStation,
+  occurrences = sessionOccurrences
 ): Promise<FilteredWaveBatch> {
   const filterState = get(settings);
   const filtered = hasWaveFilters(filterState);
@@ -117,10 +125,10 @@ async function filteredWaveBatch(
   let latestBatchId = '';
   let cursor = `${prevTrackId ?? ''}`.trim();
 
-  const scanBatches = filtered || sessionOccurrences.size > 0 ? FILTER_SCAN_BATCHES : 1;
+  const scanBatches = filtered || occurrences.size > 0 ? FILTER_SCAN_BATCHES : 1;
   for (let attempt = 0; attempt < scanBatches; attempt++) {
     if (cancelled()) throw new DOMException('Wave request cancelled', 'AbortError');
-    const batch = await yandexWaveBatch(rawToken, cursor || undefined);
+    const batch = await yandexWaveBatch(rawToken, cursor || undefined, station);
     if (cancelled()) throw new DOMException('Wave request cancelled', 'AbortError');
     latestBatchId = batch.batchId || latestBatchId;
     if (batch.tracks.length === 0) break;
@@ -131,11 +139,11 @@ async function filteredWaveBatch(
       if (
         !id ||
         seen.has(id) ||
-        occurrenceCount(track) >= MAX_TRACK_OCCURRENCES ||
+        (occurrences.get(id) ?? 0) >= MAX_TRACK_OCCURRENCES ||
         !trackMatchesWaveFilters(track, filterState)
       ) continue;
       seen.add(id);
-      tracks.push(mark(track, batch.batchId || latestBatchId));
+      tracks.push(mark(track, batch.batchId || latestBatchId, station));
     }
 
     if (!nextCursor || nextCursor === cursor) break;
@@ -152,10 +160,16 @@ async function filteredWaveBatch(
  * Повторный запуск во время игры — это осознанный жест «собери заново»: станция отдаёт новую
  * порцию с учётом всего, что человек успел пропустить и дослушать.
  */
-export async function startWave(options: { signal?: AbortSignal } = {}): Promise<boolean> {
+export async function startWave(options: { signal?: AbortSignal; seedTrack?: any } = {}): Promise<boolean> {
   const generation = ++startGeneration;
   const t = token();
   const initialTrack = get(currentTrack);
+  const seed = options.seedTrack ? waveSeedForTrack(options.seedTrack) : null;
+  if (options.seedTrack && !seed) {
+    notify('Волну по треку можно запустить из меню трека Яндекс Музыки.', 'error');
+    return false;
+  }
+  const station = seed ? `track:${seed.id}` : WAVE_STATION;
   const cancelled = () => options.signal?.aborted === true || generation !== startGeneration || token() !== t || get(currentTrack) !== initialTrack;
   if (!t) {
     notify('Волна работает от аккаунта Яндекс Музыки — вставьте токен в настройках', 'error');
@@ -164,11 +178,11 @@ export async function startWave(options: { signal?: AbortSignal } = {}): Promise
 
   // «Собрать заново» во время активной волны продолжает тот же сеанс и сохраняет лимит
   // повторов. Новый запуск после остановки начинает чистую историю.
-  if (!get(waveActive)) sessionOccurrences.clear();
+  const occurrences = get(waveActive) && station === sessionStation ? sessionOccurrences : new Map<string, number>();
 
   let batch: FilteredWaveBatch;
   try {
-    batch = await filteredWaveBatch(t, null, FILTER_TARGET_TRACKS, cancelled);
+    batch = await filteredWaveBatch(t, null, FILTER_TARGET_TRACKS, cancelled, station, occurrences);
   } catch (e) {
     if (cancelled()) return false;
     console.error('[волна] станция не ответила', e);
@@ -191,6 +205,9 @@ export async function startWave(options: { signal?: AbortSignal } = {}): Promise
 
   ++sessionGeneration;
   pendingBatch = null;
+  if (occurrences !== sessionOccurrences) sessionOccurrences.clear();
+  sessionStation = station;
+  waveSeed.set(seed);
   batchId = batch.batchId;
   const tracks = batch.tracks;
   rememberOccurrences(tracks);
@@ -199,7 +216,7 @@ export async function startWave(options: { signal?: AbortSignal } = {}): Promise
   filterMissNotified = false;
 
   // Отметка о запуске станции — до первого трека, как это делают клиенты Яндекса.
-  yandexWaveFeedback(t, 'radioStarted', { batchId: tracks[0].waveBatchId || batchId });
+  yandexWaveFeedback(t, 'radioStarted', { batchId: tracks[0].waveBatchId || batchId, station });
 
   // Очередь ставим раньше трека: реакция плеера на `currentTrack` синхронная, и к моменту,
   // когда он начнёт грузить первый трек, остальная порция должна уже лежать на месте.
@@ -218,6 +235,7 @@ export async function startWave(options: { signal?: AbortSignal } = {}): Promise
 export function stopWave(): void {
   ++startGeneration;
   ++sessionGeneration;
+  waveSeed.set(null);
   if (!get(waveActive)) return;
   waveActive.set(false);
   batchId = '';
@@ -254,7 +272,7 @@ function watchCurrentTrack(): void {
     const id = `${track.id}`;
     if (id === startedId) return; // повторный запуск того же трека: станции это не новость
     startedId = id;
-    yandexWaveFeedback(token(), 'trackStarted', { batchId: track.waveBatchId, trackId: track.id });
+    yandexWaveFeedback(token(), 'trackStarted', { batchId: track.waveBatchId, trackId: track.id, station: track.waveStationId || sessionStation });
   });
 }
 
@@ -275,6 +293,7 @@ export function waveTrackDone(
     batchId: track.waveBatchId,
     trackId: track.id,
     playedSeconds,
+    station: track.waveStationId || sessionStation,
   });
 }
 

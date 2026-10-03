@@ -913,7 +913,8 @@ export interface YandexWaveBatch {
  */
 export async function yandexWaveBatch(
   rawToken: string,
-  prevTrackId?: string | number | null
+  prevTrackId?: string | number | null,
+  station = WAVE_STATION
 ): Promise<YandexWaveBatch> {
   const token = normalizeYandexToken(rawToken);
   if (!token) throw new Error('Яндекс Музыка не подключена — вставьте токен в настройках.');
@@ -922,7 +923,8 @@ export async function yandexWaveBatch(
   const tail = `${prevTrackId ?? ''}`.trim();
   if (tail) params.set('queue', tail);
 
-  const result = await ymJson(`${API}/rotor/station/${WAVE_STATION}/tracks?${params}`, token);
+  if (station !== WAVE_STATION && !/^track:\d+$/.test(station)) throw new Error('Не удалось определить трек для волны. Открой его меню заново.');
+  const result = await ymJson(`${API}/rotor/station/${station}/tracks?${params}`, token);
 
   // Порция приходит как `sequence: [{ type, track, liked }]`; `mapYandexTrack` умеет
   // разворачивать такую обёртку сам (в лайках и плейлистах она такая же).
@@ -947,13 +949,15 @@ export async function yandexWaveBatch(
 export async function yandexWaveFeedback(
   rawToken: string,
   event: YandexWaveEvent,
-  opts: { batchId?: string; trackId?: string | number; playedSeconds?: number } = {}
+  opts: { batchId?: string; trackId?: string | number; playedSeconds?: number; station?: string } = {}
 ): Promise<void> {
   const token = normalizeYandexToken(rawToken);
   if (!token) return;
 
+  const station = opts.station || WAVE_STATION;
+  if (station !== WAVE_STATION && !/^track:\d+$/.test(station)) return;
   const body: Record<string, any> = { type: event, timestamp: new Date().toISOString() };
-  if (event === 'radioStarted') body.from = WAVE_FROM;
+  if (event === 'radioStarted') body.from = station === WAVE_STATION ? WAVE_FROM : `radio-web-${station.replace(':', '_')}-default`;
   const trackId = `${opts.trackId ?? ''}`.trim();
   if (trackId) body.trackId = trackId;
   if (opts.playedSeconds != null && Number.isFinite(opts.playedSeconds)) {
@@ -965,7 +969,7 @@ export async function yandexWaveFeedback(
   const query = opts.batchId ? `?batch-id=${encodeURIComponent(opts.batchId)}` : '';
 
   try {
-    await ymJson(`${API}/rotor/station/${WAVE_STATION}/feedback${query}`, token, {
+    await ymJson(`${API}/rotor/station/${station}/feedback${query}`, token, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body),

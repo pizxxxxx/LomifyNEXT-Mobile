@@ -29,6 +29,8 @@ export const currentTrack = writable<{
   // отметки о треке станция принимает только вместе с ним (см. lib/wave.ts). По отсутствию
   // поля плеер и понимает, что человек включил что-то своё, и волну надо остановить.
   waveBatchId?: string;
+  /** Station that issued this batch; track radio feedback must use the same station. */
+  waveStationId?: string;
   mobileQueuedNext?: boolean;
 } | null>(null);
 
@@ -375,6 +377,11 @@ export const searchQuery = writable('');
 export const searchResults = writable<any[]>([]);
 export const searchPlaylists = writable<any[]>([]);
 export const searchHistory = writable<string[]>([]);
+export interface MobileSearchEntry { query: string; mode: 'lyrics' | 'vibe' }
+export const mobileDiscoveryHistory = writable<MobileSearchEntry[]>([]);
+function restoreMobileSearchHistory(value: unknown): MobileSearchEntry[] {
+  return Array.isArray(value) ? value.filter(item => item && typeof item.query === 'string' && item.query.trim() && (item.mode === 'lyrics' || item.mode === 'vibe')).slice(0, 20) : [];
+}
 
 // Playback queue
 export const queue = writable<any[]>([]);
@@ -450,6 +457,8 @@ export function initStore() {
     const storedSearch = readStoredJson<unknown>('lomifynext_search_history', []);
     searchHistory.set(Array.isArray(storedSearch) ? storedSearch : []);
     bindStoredState('lomifynext_search_history', searchHistory, { restore: value => Array.isArray(value) ? value : [], onFailure: storageFailure });
+    mobileDiscoveryHistory.set(restoreMobileSearchHistory(readStoredJson('lomifynext_discovery_history', [])));
+    bindStoredState('lomifynext_discovery_history', mobileDiscoveryHistory, { restore: restoreMobileSearchHistory, onFailure: storageFailure });
   }
 }
 

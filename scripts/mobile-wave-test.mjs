@@ -18,6 +18,7 @@ function compile(path, dependencies = {}) {
 const filters = compile('../src/lib/waveFilters.ts');
 function setup() {
   const requests = [];
+  const stations = [];
   const feedback = [];
   const notices = [];
   const stores = {
@@ -28,12 +29,13 @@ function setup() {
   const wave = compile('../src/lib/wave.ts', {
     'svelte/store': { writable, get }, './stores': stores, './waveFilters': filters,
     './yandex': {
-      yandexWaveBatch: () => new Promise(resolve => requests.push(resolve)),
+      WAVE_STATION: 'user:onyourwave',
+      yandexWaveBatch: (token, tail, station) => { stations.push(station); return new Promise(resolve => requests.push(resolve)); },
       yandexWaveFeedback: (...args) => { feedback.push(args); return Promise.resolve(); }
     }
   });
   const batch = (prefix, n = 10) => ({ batchId: prefix, tracks: Array.from({ length: n }, (_, i) => ({ id: `${prefix}-${i}`, title: `${prefix} ${i}`, artist: 'Test', source: 'yandex' })) });
-  return { wave, stores, requests, feedback, notices, batch };
+  return { wave, stores, requests, feedback, notices, batch, stations };
 }
 {
   const { wave, stores, requests, feedback, batch } = setup();
@@ -151,4 +153,35 @@ console.log('PASS: quiet/loud audio, kick alternation, sustained notes, angle li
   }
   assert(onsets >= 200, `Dense 120-second track lost its beats: ${onsets}/240`);
   console.log(`PASS dense two-minute track: ${onsets}/240 beats detected after the first bar`);
+}
+
+// Seed selection is a station change, not a one-off similar-tracks query.
+{
+  const {wave,stores,requests,feedback,stations,batch}=setup();
+  assert.equal(wave.waveSeedForTrack({id:'123:456',title:'Seed',artist:'Artist',source:'yandex'}).id,'123');
+  assert.equal(wave.waveSeedForTrack({id:123,source:'soundcloud'}),null);
+  assert.equal(wave.waveSeedForTrack({id:'../../other',source:'yandex'}),null);
+  const seed={id:'123',source:'yandex',title:'Seed',artist:'Artist'};
+  const pending=wave.startWave({seedTrack:seed});
+  assert.equal(stations.at(-1),'track:123');requests.shift()(batch('seed'));assert.equal(await pending,true);
+  assert.equal(get(wave.waveSeed).title,'Seed');
+  assert.equal(get(stores.currentTrack).waveStationId,'track:123');
+  assert.equal(feedback[0][2].station,'track:123');
+  assert(feedback.some(event=>event[1]==='trackStarted'));
+  wave.waveTrackDone(get(stores.currentTrack),20,'skip');
+  assert(feedback.every(event=>event[2].station==='track:123'));
+  stores.queue.set([]);const refill=wave.waveRefill();assert.equal(stations.at(-1),'track:123');requests.shift()(batch('more'));await refill;
+  assert(get(stores.queue).every(track=>track.waveStationId==='track:123'));
+  const personal=wave.startWave({seedTrack:null});assert.equal(stations.at(-1),'user:onyourwave');requests.shift()(batch('personal'));await personal;
+  assert.equal(get(wave.waveSeed),null);
+  console.log('PASS seeded station, compound IDs, feedback, refill and return to personal radio');
+}
+{
+ const {wave,stores,requests,batch}=setup();
+ const first=wave.startWave({seedTrack:{id:'123',source:'yandex',title:'Seed'}});requests.shift()(batch('first'));await first;
+ const cancelled=new AbortController();const pending=wave.startWave({seedTrack:{id:'456',source:'yandex',title:'Other'},signal:cancelled.signal});cancelled.abort();requests.shift()(batch('late'));assert.equal(await pending,false);
+ assert.equal(get(wave.waveSeed).id,'123');assert.equal(get(stores.currentTrack).id,'first-0');
+ stores.queue.set([]);const old=wave.waveRefill();const late=requests.shift();const restart=wave.startWave({seedTrack:{id:'789',source:'yandex',title:'New'}});requests.shift()(batch('new'));await restart;late(batch('stale'));await old;
+ assert(get(stores.queue).every(track=>track.waveStationId==='track:789'));
+ console.log('PASS cancelled seed preserves playback; old refill cannot enter another seed station');
 }

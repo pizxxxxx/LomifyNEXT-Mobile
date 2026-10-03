@@ -112,7 +112,7 @@ pub async fn ios_glass_buttons_update(
 extern "C" fn selected(index: i32) {
     if let (Some(app), Some(view)) = (
         APP.get(),
-        ["home", "search", "library", "settings"].get(index as usize),
+        ["wave", "home", "library", "settings"].get(index as usize),
     ) {
         let _ = app.emit("ios:navigation", *view);
     }
