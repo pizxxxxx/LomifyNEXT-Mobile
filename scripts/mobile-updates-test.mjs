@@ -4,11 +4,18 @@ import vm from 'node:vm';
 import ts from 'typescript';
 
 const source = readFileSync(new URL('../src/lib/mobileUpdateCore.ts', import.meta.url), 'utf8');
-const { outputText } = ts.transpileModule(source, {
-  compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.CommonJS }
-});
-const core = {};
-vm.runInNewContext(outputText, { exports: core, URL, Error, Math, Number, String });
+function compileCore(source) {
+  const { outputText } = ts.transpileModule(source, {
+    compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.CommonJS }
+  });
+  const exports = {};
+  vm.runInNewContext(outputText, { exports, URL, Error, Math, Number, String });
+  return exports;
+}
+const core = compileCore(source);
+// Exact snapshot from released iOS 1.0.27 (commit de91a280), not a copy of
+// today's selector: a release must also reach apps that have not upgraded yet.
+const legacyCore = compileCore(readFileSync(new URL('./fixtures/mobile-update-core-1.0.27.ts', import.meta.url), 'utf8'));
 
 const makeRelease = (tag, names) => ({
   tag_name: tag, draft: false, prerelease: tag.includes('beta'), html_url: `https://github.com/pizxxxxx/LomifyNEXT-Mobile/releases/tag/${tag}`,
@@ -72,7 +79,23 @@ assert.equal(core.findLatestIOSRelease([ios25, combined29]), combined29.html_url
 assert.equal(core.findAndroidUpdate([ios25, combined29], '1.0.28')?.version, '1.0.29');
 assert.equal(core.findLatestIOSRelease([{ ...combined29, assets: combined29.assets.slice(0, 1) }, ios25]), ios25.html_url,
   'A combined release without its IPA must not hide a working iOS download');
+assert.equal(legacyCore.findLatestIOSRelease([combined29, ios25]), ios25.html_url,
+  'Reproduce the installed app bug: old iOS cannot see a plain v-prefixed common release');
+const { version: releaseVersion } = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8'));
+const compatibleCommon = makeRelease(`ios-v${releaseVersion}`, [
+  `LomifyNEXT-${releaseVersion}-arm64.apk`, `LomifyNEXT-${releaseVersion}.ipa`
+]);
+for (const selector of [core, legacyCore]) {
+  assert.equal(selector.findLatestIOSRelease([compatibleCommon, combined29, ios25]), compatibleCommon.html_url,
+    'One common release with an ios-v tag must be discoverable by installed old and new iOS apps');
+  assert.equal(selector.findAndroidUpdate([compatibleCommon, combined29], '1.0.16')?.apkUrl,
+    compatibleCommon.assets[0].browser_download_url,
+    'The same common release must offer Android its APK regardless of the tag prefix');
+}
+assert.equal(legacyCore.findLatestIOSRelease([{ ...compatibleCommon, assets: compatibleCommon.assets.slice(0, 1) }, ios25]), ios25.html_url,
+  'A common release must not be published without the IPA needed by old installations');
 console.log('PASS iOS release selection: IPA only, beta releases, version ordering, drafts, missing IPA and expected repository');
+console.log('PASS common release compatibility with the actual iOS 1.0.27 selector and Android');
 
 const opened = [];
 let response = { ok: true, json: async () => [android99, ios24, ios25] };
