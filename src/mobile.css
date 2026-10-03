@@ -205,13 +205,17 @@ body[data-global-theme="true"] .mobile-app::before { opacity: 1; }
 .mobile-disconnect-confirm p { margin-bottom: 12px; }
 .mobile-error { overflow-wrap: anywhere; line-height: 1.5; }
 .mobile-error:empty { display: none; }
-.mobile-wave-shortcut { position: relative; display: flex; align-items: center; gap: 14px; width: 100%; margin-top: 12px; padding: 16px; text-align: left; border: 1px solid color-mix(in srgb, var(--mobile-accent) 15%, var(--mobile-border)); border-radius: 20px; background: linear-gradient(148deg, color-mix(in srgb, var(--mobile-accent) 10%, var(--mobile-surface)), var(--mobile-surface) 75%); box-shadow: var(--mobile-elevation-low); }
-.mobile-wave-shortcut-icon { display: grid; place-items: center; width: 48px; height: 48px; flex-shrink: 0; border-radius: 14px; color: #fff; background: radial-gradient(circle at 35% 32%, #e5a332, #a53a45 54%, #4a204d 100%); }
-.mobile-wave-shortcut > span:nth-child(2) { flex: 1; min-width: 0; }
-.mobile-wave-shortcut small { display: block; font-size: 9px; letter-spacing: .14em; color: var(--mobile-muted); }
-.mobile-wave-shortcut strong { display: block; font-size: 21px; font-weight: 650; letter-spacing: -.025em; margin: 4px 0; }
-.mobile-wave-shortcut > span > span { display: block; font-size: 12px; color: var(--mobile-muted); }
-.mobile-wave-shortcut > svg { flex-shrink: 0; color: var(--mobile-accent); }
+.mobile-wave-shortcut { display: flex; align-items: center; gap: 12px; width: 100%; min-height: 112px; margin-top: 12px; padding: 16px 20px; text-align: start; border: 0; border-radius: 12px; background: var(--mobile-surface); color: var(--mobile-text); }
+.mobile-wave-shortcut-copy { flex: 1; min-width: 0; }
+.mobile-wave-shortcut-copy strong { display: block; font-size: 22px; font-weight: 600; line-height: 1.25; letter-spacing: -.025em; overflow-wrap: anywhere; }
+.mobile-wave-shortcut-copy small { display: block; margin-top: 6px; font-size: 13px; font-weight: 400; line-height: 1.5; color: var(--mobile-muted); overflow-wrap: anywhere; }
+.mobile-wave-shortcut-art { position: relative; display: grid; place-items: center; flex: 0 0 80px; width: 80px; height: 80px; pointer-events: none; color: var(--mobile-muted); }
+.mobile-wave-shortcut-art > svg { position: absolute; inset: 0; width: 100%; height: 100%; stroke: currentColor; stroke-width: 1.5; opacity: .35; }
+.mobile-wave-shortcut-play { position: relative; display: grid; place-items: center; width: 44px; height: 44px; border-radius: 50%; background: var(--mobile-text); color: var(--mobile-surface); }
+.mobile-wave-shortcut-play > svg { margin-inline-start: 2px; }
+.mobile-app[data-text-size="large"] .mobile-wave-shortcut-copy strong { font-size: 25px; }
+.mobile-app[data-text-size="large"] .mobile-wave-shortcut-copy small { font-size: 15px; }
+@media (max-width: 370px) { .mobile-wave-shortcut { padding-inline: 16px; } .mobile-wave-shortcut-art { flex-basis: 64px; width: 64px; height: 64px; } }
 .mobile-pane.mobile-wave-pane { position: absolute; inset: 0; padding-top: max(16px, env(safe-area-inset-top)); background: var(--mobile-bg); }
 .mobile-wave-page { --wave-ink: #a090bd; width: 100%; max-width: 600px; margin: 0 auto; text-align: center; }
 .mobile-wave-toolbar { display: flex; align-items: center; gap: 12px; min-height: 44px; text-align: left; }
@@ -389,7 +393,6 @@ body[data-global-theme="true"] .mobile-app::before { opacity: 1; }
 .mobile-app .search-artist-grid, .mobile-app .search-playlist-grid { grid-template-columns: repeat(2,minmax(0,1fr)); }
 .mobile-app .track-collection { grid-template-columns: repeat(2,minmax(0,1fr)); gap: 12px; padding-inline: 0; }
 .mobile-app .tile-play-button, .mobile-app .tile-like-button { opacity: 1; transform: none; min-width: 44px; min-height: 44px; }
-.mobile-wave-shortcut.is-soundcloud { margin-top: 12px; }
 .mobile-profile-card { display: flex; align-items: center; gap: 14px; min-width: 0; margin: 8px 0 24px; padding: 16px; border: 1px solid var(--mobile-border); border-radius: 22px; background: radial-gradient(circle at 0 0, color-mix(in srgb, var(--mobile-accent) 20%, transparent), transparent 65%), var(--mobile-surface); box-shadow: var(--mobile-elevation-low); }
 .mobile-profile-card > div { flex: 1; min-width: 0; }
 .mobile-profile-card strong, .mobile-profile-card small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -843,9 +846,6 @@ body[data-mobile="true"] { --mobile-bg: #0b0b0e; --mobile-surface: #19191e; --mo
 .mobile-app .mobile-primary .lucide { stroke-width: 2; }
 .mobile-app .mobile-header { font-weight: 600; }
 .mobile-home .mobile-search-shortcut { min-height: 52px; padding: 12px 14px; border-radius: 12px; font-size: 15px; box-shadow: none; }
-.mobile-home .mobile-wave-shortcut { border-radius: 16px; box-shadow: none; }
-.mobile-home .mobile-wave-shortcut small { font-size: 13px; font-weight: 400; letter-spacing: 0; text-transform: none; }
-.mobile-home .mobile-wave-shortcut strong { font-size: 25px; font-weight: 600; letter-spacing: -.02em; }
 .mobile-home .mobile-favorites { padding: 10px 0; border: 0; border-radius: 0; background: transparent; }
 .mobile-home .mobile-favorites strong { font-size: 16px; font-weight: 500; }
 .mobile-home .mobile-favorites-icon { color: #fff; background: var(--mobile-raised); border-radius: 12px; }

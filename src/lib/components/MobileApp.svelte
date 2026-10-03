@@ -3,7 +3,7 @@
   import { isIOS } from '$lib/mobile';
   import { invoke } from '@tauri-apps/api/core';
   import { listen } from '@tauri-apps/api/event';
-  import { Home, Search as SearchIcon, Library as LibraryIcon, Settings as SettingsIcon, ArrowLeft, Music2, RefreshCw, Heart, Radio, ArrowUpRight, Download, MoreHorizontal } from 'lucide-svelte';
+  import { Home, Search as SearchIcon, Library as LibraryIcon, Settings as SettingsIcon, ArrowLeft, Music2, RefreshCw, Heart, Play, ArrowUpRight, Download, MoreHorizontal } from 'lucide-svelte';
   import { currentView, currentArtist, currentTrack, isPlaying, queue, likedTracks, settings, notify } from '$lib/stores';
   import { checkMobileUpdate, mobileUpdateState, openMobileUpdate } from '$lib/mobileUpdates';
   import { mobileReveal } from '$lib/actions/mobileReveal';
@@ -209,8 +209,19 @@
           </button>
         {/if}
         <button class="mobile-search-shortcut" onclick={() => navigate('search')}><SearchIcon size={22} /><span>Трек, исполнитель или альбом</span></button>
-        <button class="mobile-wave-shortcut" class:is-soundcloud={$settings.searchSource !== 'yandex'} onclick={openWave}>
-          <span class="mobile-wave-shortcut-icon"><Radio size={30} strokeWidth={1.4} /></span><span><small>{$settings.searchSource === 'yandex' ? 'Яндекс Музыка' : 'SoundCloud'}</small><strong>{$settings.mobileWaveName === 'wave' ? 'Моя Волна' : 'Моя Тусня'}</strong><span>{$settings.searchSource === 'yandex' ? 'Музыка на твоей частоте' : 'Поток из любимых треков'}</span></span><ArrowUpRight size={22} />
+        <button class="mobile-wave-shortcut" aria-label={`${$settings.mobileWaveName === 'wave' ? 'Моя Волна' : 'Моя Тусня'} — открыть и слушать`} onclick={openWave}>
+          <span class="mobile-wave-shortcut-copy">
+            <strong>{$settings.mobileWaveName === 'wave' ? 'Моя Волна' : 'Моя Тусня'}</strong>
+            <small>{$settings.searchSource === 'yandex' ? 'Яндекс Музыка' : 'SoundCloud'}</small>
+          </span>
+          <span class="mobile-wave-shortcut-art" aria-hidden="true">
+            <svg viewBox="0 0 80 80" fill="none">
+              <path d="M2 28C15 28 15 13 28 13S41 48 54 48 67 28 78 28" />
+              <path d="M2 40C15 40 15 23 28 23S41 58 54 58 67 40 78 40" />
+              <path d="M2 52C15 52 15 33 28 33S41 68 54 68 67 52 78 52" />
+            </svg>
+            <span class="mobile-wave-shortcut-play"><Play size={20} fill="currentColor" strokeWidth={0} /></span>
+          </span>
         </button>
         <button class="mobile-favorites" onclick={() => navigate('library')}>
           <span class="mobile-favorites-icon"><Heart size={26} /></span>

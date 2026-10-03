@@ -7,6 +7,15 @@ export interface ChangelogEntry {
 
 export const CHANGELOG_HISTORY: ChangelogEntry[] = [
   {
+    version: '1.0.30', date: '2026-10-03',
+    highlights: [
+      { tag: 'Главная', text: 'Карточка «Моя Волна» стала спокойнее и лучше сочетается с медиатекой.' }
+    ],
+    details: [
+      { category: 'improvement', title: 'Моя Волна на главной', description: 'Название, источник музыки и Play на общей поверхности приложения. Убраны цветной градиентный значок, рамка и рекламная подпись. Нажатие по всей карточке открывает станцию и начинает воспроизведение.' }
+    ]
+  },
+  {
     version: '1.0.29', date: '2026-10-03',
     highlights: [
       { tag: 'Обновления', text: 'Android и iPhone теперь выходят вместе: APK и IPA в одном релизе.' },
