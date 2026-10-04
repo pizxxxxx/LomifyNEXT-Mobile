@@ -13,7 +13,18 @@ export interface GitHubRelease {
 
 /** Select the newest IPA from a combined release or the historical iOS releases. */
 export function findLatestIOSRelease(releases: GitHubRelease[]): string | null {
-  let best: { version: string; url: string } | null = null;
+  return latestIOSUpdate(releases)?.releaseUrl ?? null;
+}
+
+export interface IOSUpdate {
+  version: string;
+  ipaUrl: string;
+  releaseUrl: string;
+  notes: string;
+}
+
+function latestIOSUpdate(releases: GitHubRelease[]): IOSUpdate | null {
+  let best: IOSUpdate | null = null;
   for (const release of releases) {
     if (release.draft || !Array.isArray(release.assets)) continue;
     if (!release.tag_name || release.html_url !== `${MOBILE_RELEASES_URL}/tag/${release.tag_name}`) continue;
@@ -21,10 +32,17 @@ export function findLatestIOSRelease(releases: GitHubRelease[]): string | null {
       const version = /^LomifyNEXT-(\d+\.\d+\.\d+(?:-(?:alpha|beta|rc)\.\d+)?)\.ipa$/i.exec(asset.name)?.[1];
       if (!version || asset.browser_download_url !== `${MOBILE_RELEASES_URL}/download/${release.tag_name}/${asset.name}`) continue;
       if (best && compareMobileVersions(version, best.version) <= 0) continue;
-      best = { version, url: release.html_url };
+      best = { version, ipaUrl: asset.browser_download_url, releaseUrl: release.html_url, notes: (release.body || '').slice(0, 1000) };
     }
   }
-  return best?.url ?? null;
+  return best;
+}
+
+/** Asset versions are authoritative, including releases shared with Android. */
+export function findIOSUpdate(releases: GitHubRelease[], currentVersion: string): IOSUpdate | null {
+  if (!parseVersion(currentVersion)) return null;
+  const latest = latestIOSUpdate(releases);
+  return latest && compareMobileVersions(latest.version, currentVersion) > 0 ? latest : null;
 }
 
 export interface AndroidUpdate {
@@ -32,6 +50,13 @@ export interface AndroidUpdate {
   apkUrl: string;
   releaseUrl: string;
   notes: string;
+}
+
+export type MobileUpdate = (AndroidUpdate & { platform: 'android' }) | (IOSUpdate & { platform: 'ios' });
+
+export function mobileUpdateLink(update: MobileUpdate): string {
+  // AltStore installation needs the IPA and its instructions; Android opens its APK.
+  return update.platform === 'ios' ? update.releaseUrl : update.apkUrl;
 }
 
 type ParsedVersion = { numbers: [number, number, number]; rank: number; sequence: number };

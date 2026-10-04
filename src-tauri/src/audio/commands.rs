@@ -137,6 +137,13 @@ pub fn audio_pause(app: AppHandle, state: State<'_, AudioState>) {
 }
 
 #[tauri::command]
+pub fn audio_stop_for_track_change(app: AppHandle, state: State<'_, AudioState>) {
+    // Replace the old source without changing the user's play intent. A real
+    // pause, call or route loss still latches the platform gate during decoding.
+    engine::stop(&app, state);
+}
+
+#[tauri::command]
 pub fn audio_stop(app: AppHandle, state: State<'_, AudioState>) {
     #[cfg(target_os = "android")]
     crate::android_playback_gate::request_pause();

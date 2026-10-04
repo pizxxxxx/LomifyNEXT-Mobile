@@ -16,6 +16,7 @@ mod ios_playback_gate;
 #[cfg(target_os = "android")]
 mod android_playback_gate;
 mod ios_navigation;
+mod mobile_haptics;
 mod network;
 mod shared;
 mod track_cache;
@@ -271,6 +272,7 @@ pub fn run() {
             exit_app,
             ios_navigation::ios_navigation_update,
             ios_navigation::ios_glass_buttons_update,
+            mobile_haptics::mobile_haptic,
             network::server::get_server_ports,
             app::diagnostics::diagnostics_log,
             discord::commands::discord_connect,
@@ -288,6 +290,7 @@ pub fn run() {
             audio::audio_android_previous_prepare,
             audio::audio_pause,
             audio::audio_stop,
+            audio::audio_stop_for_track_change,
             audio::audio_cancel_load,
             audio::audio_seek,
             audio::audio_set_volume,

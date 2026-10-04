@@ -38,7 +38,7 @@
       failMobileLoad(loadingGeneration, 'Загрузка отменена. Нажми воспроизведение, чтобы повторить.');
       return;
     }
-    if (!duration) void startLoading($currentTrack);
+    if (!duration) { $isPlaying = true; void startLoading($currentTrack); }
     else $isPlaying = !$isPlaying;
   }
   function failMobileLoad(generation: number, message: string) {
@@ -1198,7 +1198,7 @@
     // нужна только вторая его половина — отмена загрузки, которая могла остаться в полёте от
     // предыдущего нажатия. Ровно это и делает `audio_cancel_load`.
     try {
-      await invoke(crossfadeMs > 0 ? 'audio_cancel_load' : 'audio_stop');
+      await invoke(crossfadeMs > 0 ? 'audio_cancel_load' : usesNativeMobileAudio ? 'audio_stop_for_track_change' : 'audio_stop');
     } catch (e) {
       console.warn('[player] audio_stop не ответил', e);
     }

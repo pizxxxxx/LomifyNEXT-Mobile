@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
 import ts from 'typescript';
+import { writable, derived, get } from 'svelte/store';
 
 const source = readFileSync(new URL('../src/lib/mobileUpdateCore.ts', import.meta.url), 'utf8');
 function compileCore(source) {
@@ -110,7 +111,7 @@ vm.runInNewContext(ts.transpileModule(readFileSync(new URL('../src/lib/mobileUpd
     return response;
   },
   require: name => ({
-    'svelte/store': { writable: value => ({ value }) },
+    'svelte/store': { writable, derived },
     '@tauri-apps/api/app': {}, '@tauri-apps/plugin-opener': { openUrl: async url => opened.push(url) },
     './version': { APP_PACKAGE_VERSION: '1.0.25' }, './mobileUpdateCore': core
   }[name])
@@ -123,3 +124,94 @@ response = { ok: true, json: async () => ({ error: 'bad response' }) };
 await assert.rejects(updater.openLatestIOSRelease(), /неожиданный ответ/);
 assert.equal(opened.length, 1, 'Failed checks do not navigate to Android or an unknown URL');
 console.log('PASS iOS check: uncached request, native opener, API limit and invalid response handling');
+
+
+assert.equal(core.findIOSUpdate([ios25, android99], '1.0.24')?.version, '1.0.25');
+assert.equal(core.findIOSUpdate([ios25], '1.0.25'), null, 'Equal installed IPA is not an update');
+assert.equal(core.findIOSUpdate([ios25], '1.0.26'), null, 'Never offer an older IPA');
+assert.equal(core.findIOSUpdate([ios25], 'invalid'), null);
+assert.equal(core.mobileUpdateLink({ ...core.findIOSUpdate([ios25], '1.0.24'), platform: 'ios' }), ios25.html_url);
+assert.equal(core.mobileUpdateLink({ ...found, platform: 'android' }), newer.assets[0].browser_download_url);
+
+const updaterSource = ts.transpileModule(readFileSync(new URL('../src/lib/mobileUpdates.ts', import.meta.url), 'utf8'), {
+  compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.CommonJS }
+}).outputText;
+function boot(platform, storage = new Map(), installed = '1.0.24') {
+  const exports = {};
+  let calls = 0, releases = [ios25, makeRelease('ios-v1.0.25', ['LomifyNEXT-1.0.25-arm64.apk'])], failure = null, gate = null;
+  vm.runInNewContext(updaterSource, {
+    exports, navigator: { userAgent: platform === 'ios' ? 'iPhone' : platform === 'ipad' ? 'Macintosh' : platform === 'android' ? 'Android' : 'Macintosh', maxTouchPoints: platform === 'ipad' ? 5 : 0 },
+    localStorage: { getItem: key => storage.get(key), setItem: (key, value) => storage.set(key, value) },
+    window: { __TAURI_INTERNALS__: {} }, AbortController, setTimeout, clearTimeout, Error,
+    fetch: async (url, options) => {
+      calls++;
+      assert.equal(url, platform === 'android' ? core.MOBILE_RELEASES_API : core.MOBILE_IOS_RELEASES_API);
+      assert.equal(options.cache, 'no-store');
+      if (gate) await gate;
+      if (failure) throw failure;
+      return { ok: true, json: async () => releases };
+    },
+    require: name => ({
+      'svelte/store': { writable, derived }, '@tauri-apps/api/app': { getVersion: async () => installed },
+      '@tauri-apps/plugin-opener': { openUrl: async url => opened.push(url) },
+      './version': { APP_PACKAGE_VERSION: '1.0.24' }, './mobileUpdateCore': core
+    }[name])
+  });
+  return { updater: exports, calls: () => calls, state: () => get(exports.mobileUpdateState), reminder: () => get(exports.mobileUpdateReminder),
+    setReleases: value => releases = value, fail: value => failure = value, gate: value => gate = value };
+}
+for (const platform of ['ios', 'android', 'ipad']) {
+  const storage = new Map();
+  const app = boot(platform, storage);
+  await app.updater.checkMobileUpdate(true);
+  assert.equal(app.state().status, 'available');
+  assert.equal(app.state().update.platform, platform === 'ipad' ? 'ios' : platform);
+  assert.equal(app.reminder()?.version, '1.0.25');
+  app.updater.dismissMobileUpdate('1.0.25');
+  await app.updater.checkMobileUpdate();
+  assert.equal(app.calls(), 1, 'Foreground checks use fresh cache');
+  assert.equal(app.reminder(), null, 'No repeat after Later or returning from the browser');
+  const restarted = boot(platform, storage);
+  await restarted.updater.checkMobileUpdate(true);
+  assert.equal(restarted.calls(), 1, 'Cold launch always checks live releases, even with fresh cache');
+  assert.equal(restarted.reminder()?.version, '1.0.25', 'Later expires at the next cold launch');
+  app.setReleases([makeRelease('ios-v1.0.26', ['LomifyNEXT-1.0.26-arm64.apk', 'LomifyNEXT-1.0.26.ipa'])]);
+  await app.updater.checkMobileUpdate(true);
+  assert.equal(app.reminder()?.version, '1.0.26', 'Dismissal of one version does not hide another');
+  app.setReleases([ios24]);
+  await app.updater.checkMobileUpdate(true);
+  assert.equal(app.state().status, 'current');
+  assert.equal(app.reminder(), null, 'No reminder if no newer platform build exists');
+  app.fail(new Error('Offline'));
+  await app.updater.checkMobileUpdate(true);
+  assert.equal(app.state().status, 'error');
+  assert.equal(app.reminder(), null, 'Offline checks are quiet at launch');
+  assert.equal(app.state().message, 'Offline', 'Manual checks can show the error in Settings');
+}
+const current = boot('ios', new Map(), '1.0.25');
+await current.updater.checkMobileUpdate(true);
+assert.equal(current.reminder(), null, 'Compare against native installed version');
+const overlapping = boot('android');
+let resume;
+overlapping.gate(new Promise(resolve => resume = resolve));
+const checkA = overlapping.updater.checkMobileUpdate(true);
+const checkB = overlapping.updater.checkMobileUpdate(true);
+await new Promise(resolve => setImmediate(resolve));
+assert.equal(overlapping.calls(), 1, 'Launch and foreground checks coalesce into one request');
+resume();
+await Promise.all([checkA, checkB]);
+assert.equal(overlapping.reminder()?.version, '1.0.25');
+const unsupported = boot('desktop');
+await unsupported.updater.checkMobileUpdate(true);
+assert.equal(unsupported.calls(), 0, 'Mobile notices do not change desktop behavior');
+const cached = new Map();
+const cachedApp = boot('ios', cached);
+await cachedApp.updater.checkMobileUpdate(true);
+const cachedKey = 'lomifynext_mobile_update_check';
+const tampered = JSON.parse(cached.get(cachedKey));
+tampered.update.ipaUrl = 'https://example.com/malicious.ipa';
+cached.set(cachedKey, JSON.stringify(tampered));
+const restored = boot('ios', cached);
+await restored.updater.checkMobileUpdate();
+assert.equal(restored.calls(), 1, 'Do not restore an untrusted cached download');
+console.log('PASS launch reminders on iPhone, iPad and Android: native version, equal/older builds, live launch, cached resume, dismissal/restart, offline, coalescing and trusted URLs');

@@ -63,11 +63,14 @@ const nativeFetch=async(url,init)=>{
 };
 const discovery=load('../src/lib/mobileDiscoverySearch.ts',{'@tauri-apps/plugin-http':{fetch:nativeFetch},'@tauri-apps/plugin-opener':{openUrl:async url=>opened.push(url)},'svelte/store':{writable}},{window:{__TAURI_INTERNALS__:{}},setTimeout:(fn,ms)=>setTimeout(fn,ms===1500?0:ms)});
 const raw={id:42,title:'Song',user:{username:'Artist'},artwork_url:'https://i1.sndcdn.com/art.jpg',duration:180000};
-response={items:[{track:raw,matchedLine:'Found line'},{track:raw,matchedLine:'duplicate'},{track:{id:'bad'}}],total:41};
+response={collection:[{track:raw,matchedLine:'Found line'},{track:raw,matchedLine:'duplicate'},{track:{id:'bad'}}],page:0,page_size:20,has_more:true};
 const lyrics=await discovery.searchDiscovery('lyrics','они тянут ко мне','fixture-session',new AbortController().signal);
-assert.equal(lyrics.hits.length,1);assert.equal(lyrics.hits[0].matchedLine,'Found line');assert(lyrics.hasMore);
+assert.equal(lyrics.hits.length,1,'Provider paged collection must not be mistaken for an empty lyrics result');assert.equal(lyrics.hits[0].matchedLine,'Found line');assert(lyrics.hasMore);
 assert.equal(lyrics.hits[0].track.source,'soundcloud');assert(lyrics.hits[0].track.discoverySearch);
 let last=discoveryRequests.at(-1);assert(last.url.startsWith('https://api.scnative.space/search/lyrics?'));assert(last.url.includes('mode=text'));assert.equal(last.init.headers['x-session-id'],'fixture-session');assert(!last.url.includes('fixture-session'));
+response={collection:[],page:1,page_size:20,has_more:false};
+const nextLyrics=await discovery.searchDiscovery('lyrics','они тянут ко мне','fixture-session',new AbortController().signal,1);
+assert.equal(nextLyrics.hasMore,false);assert(discoveryRequests.at(-1).url.includes('page=1'));
 response={items:[raw],status:'preparing'};const vibe=await discovery.searchDiscovery('vibe','мягкий бас','fixture-session',new AbortController().signal);
 assert(vibe.preparing);assert.equal(vibe.hits[0].matchedLine,null);assert(discoveryRequests.at(-1).url.includes('/search/vibe?'));
 const n=discoveryRequests.length;await assert.rejects(discovery.searchDiscovery('vibe','test','',new AbortController().signal),e=>e.kind==='login');assert.equal(discoveryRequests.length,n,'No unauthenticated search or substitute lexical results');

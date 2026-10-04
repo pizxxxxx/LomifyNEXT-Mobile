@@ -2,6 +2,8 @@
 #import <WebKit/WebKit.h>
 #include <stdint.h>
 
+extern void lomify_haptic(int kind);
+
 typedef void (*LomifyTabSelected)(int32_t);
 
 // Only the system tab bar consumes touches. Content stays in the existing WebView.
@@ -22,7 +24,7 @@ typedef void (*LomifyTabSelected)(int32_t);
 @end
 @implementation LomifyTabs
 - (void)tabBarController:(UITabBarController *)controller didSelectViewController:(UIViewController *)selected {
-    if (self.selectionCallback) self.selectionCallback((int32_t)controller.selectedIndex);
+    if (self.selectionCallback) { lomify_haptic(0); self.selectionCallback((int32_t)controller.selectedIndex); }
 }
 @end
 

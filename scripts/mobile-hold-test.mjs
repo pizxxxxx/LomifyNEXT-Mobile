@@ -12,7 +12,7 @@ const window = new EventTarget();
 const timers = new Map();
 let timerId = 0;
 vm.runInNewContext(outputText, {
-  exports, require: () => ({ isMobile: true }), window, navigator: {},
+  exports, require: name => name === '$lib/mobileHaptics' ? { mobileHaptic: () => {} } : { isMobile: true }, window, navigator: {},
   setTimeout: fn => { timers.set(++timerId, fn); return timerId; }, clearTimeout: id => timers.delete(id)
 });
 class Node extends EventTarget { closest() { return null; } }

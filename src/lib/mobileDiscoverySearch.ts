@@ -41,7 +41,9 @@ export function mapDiscoveryTrack(raw: any): any | null {
 }
 export function discoveryHits(result: any, mode: DiscoveryMode): DiscoveryHit[] {
   const seen = new Set<string>();
-  return (Array.isArray(result?.items) ? result.items : []).flatMap((item: any) => {
+  // Lyrics use the provider's paged collection envelope; vibe uses items.
+  const items = mode === 'lyrics' && Array.isArray(result?.collection) ? result.collection : result?.items;
+  return (Array.isArray(items) ? items : []).flatMap((item: any) => {
     const track = mapDiscoveryTrack(mode === 'lyrics' ? item?.track : item);
     if (!track || seen.has(track.id)) return [];
     seen.add(track.id);
@@ -54,7 +56,7 @@ export async function searchDiscovery(mode: DiscoveryMode, query: string, sessio
   const params = new URLSearchParams({ q: query.trim(), limit: '20' });
   if (mode === 'lyrics') { params.set('mode', 'text'); params.set('page', String(Math.max(0, page))); }
   const raw = await request(`/search/${mode}?${params}`, session, signal);
-  return { hits: discoveryHits(raw, mode), preparing: raw?.status === 'preparing', hasMore: mode === 'lyrics' && (raw?.hasMore === true || Number(raw?.total) > (page + 1) * 20) };
+  return { hits: discoveryHits(raw, mode), preparing: raw?.status === 'preparing', hasMore: mode === 'lyrics' && (raw?.has_more === true || raw?.hasMore === true || Number(raw?.total) > (page + 1) * 20) };
 }
 /** OAuth is initiated only by a person's explicit sign-in button. */
 export async function beginDiscoveryLogin(signal: AbortSignal): Promise<string> {

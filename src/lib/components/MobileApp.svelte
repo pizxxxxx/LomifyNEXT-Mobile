@@ -6,6 +6,8 @@
   import { Home, Radio, Search as SearchIcon, Library as LibraryIcon, Settings as SettingsIcon, ArrowLeft, Music2, RefreshCw, Heart, Play, ArrowUpRight, Download, MoreHorizontal } from 'lucide-svelte';
   import { currentView, currentArtist, currentTrack, isPlaying, queue, likedTracks, settings, notify } from '$lib/stores';
   import { checkMobileUpdate, mobileUpdateState, openMobileUpdate } from '$lib/mobileUpdates';
+  import { mobileUpdateLink } from '$lib/mobileUpdateCore';
+  import { mobileHaptics } from '$lib/mobileHaptics';
   import { mobileReveal } from '$lib/actions/mobileReveal';
   import { mobilePageMotion } from '$lib/actions/mobilePageMotion';
   import { openMobileWave } from '$lib/mobileWaveNavigation';
@@ -26,6 +28,7 @@
   import MobileWave from './MobileWave.svelte';
   import MobileRecent from './MobileRecent.svelte';
   import MobileTrackMenu from './MobileTrackMenu.svelte';
+  import MobileUpdateNotice from './MobileUpdateNotice.svelte';
   import MobileEqualizer from './MobileEqualizer.svelte';
   import ArtistTag from './ArtistTag.svelte';
   import { coverUrlAtSize, coverUrlForTrack, downloadedCoverCache, handleArtworkError, handleArtworkLoad } from '$lib/offlineCovers';
@@ -104,7 +107,8 @@
         else { nativeUnlisten = release; nativeNavigationEnabled = true; }
       }).catch(error => console.warn('[iOS navigation]', error));
     }
-    void checkMobileUpdate();
+    // Every cold launch checks live releases, after the first screen has painted.
+    const cancelUpdateCheck = afterMobilePaint(() => { void checkMobileUpdate(true); }, 500);
     const checkOnResume = () => { if (!document.hidden) void checkMobileUpdate(); };
     document.addEventListener('visibilitychange', checkOnResume);
     currentView.set('wave');
@@ -157,6 +161,7 @@
       document.removeEventListener('focusout', scheduleNativeVisibility);
       if (nativeNavigationReady) void invoke('ios_navigation_update', { index: 0, visible: false, tint: [1, .533, .302] }).catch(console.warn);
       document.removeEventListener('visibilitychange', checkOnResume);
+      cancelUpdateCheck();
       release();
       releaseHistory();
       cancelMount();
@@ -180,7 +185,7 @@
 {/snippet}
 
 <svelte:window onpointerdown={() => keyboardInput = false} onkeydown={() => keyboardInput = true} />
-<div bind:this={shell} class="mobile-app" data-input={keyboardInput ? 'keyboard' : 'pointer'} data-view={$currentView} use:mobileDepth={{ enabled: $settings.mobileDepthMotion === true && $settings.mobileMotion !== false, view: $currentView }} data-motion={$settings.mobileMotion === false ? 'off' : 'on'} data-blur={$settings.mobileBlur ? 'on' : 'off'} data-text-size={$settings.mobileTextSize} data-text-weight={$settings.mobileTextWeight}>
+<div bind:this={shell} use:mobileHaptics class="mobile-app" data-input={keyboardInput ? 'keyboard' : 'pointer'} data-view={$currentView} use:mobileDepth={{ enabled: $settings.mobileDepthMotion === true && $settings.mobileMotion !== false, view: $currentView }} data-motion={$settings.mobileMotion === false ? 'off' : 'on'} data-blur={$settings.mobileBlur ? 'on' : 'off'} data-text-size={$settings.mobileTextSize} data-text-weight={$settings.mobileTextWeight}>
   <div class="mobile-navigation-stage" use:mobileSwipeBack>
   <div class="mobile-navigation-surface" data-view={$currentView}>
   <header class="mobile-header" hidden={['wave', 'home', 'search', 'library', 'settings', 'artist'].includes($currentView)}>
@@ -196,9 +201,9 @@
       <section class="mobile-home">
         <h1>Главное</h1>
         {#if $mobileUpdateState.status === 'available' && $mobileUpdateState.update}
-          <button class="mobile-update-banner" onclick={() => openMobileUpdate($mobileUpdateState.update!.apkUrl).catch(() => notify('Не удалось открыть загрузку APK. Попробуй через настройки.', 'error'))}>
+          <button class="mobile-update-banner" onclick={() => openMobileUpdate(mobileUpdateLink($mobileUpdateState.update!)).catch(() => notify('Не удалось открыть загрузку. Попробуй через настройки.', 'error'))}>
             <span class="mobile-update-banner-icon"><Download size={20} aria-hidden="true" /></span>
-            <span><strong>Доступна версия {$mobileUpdateState.update.version}</strong><small>Скачать APK с GitHub</small></span>
+            <span><strong>Доступна версия {$mobileUpdateState.update.version}</strong><small>Скачать {$mobileUpdateState.update.platform === 'ios' ? 'IPA' : 'APK'} с GitHub</small></span>
             <ArrowUpRight size={19} aria-hidden="true" />
           </button>
         {/if}
@@ -280,4 +285,5 @@
   {/if}
   <Notifications />
   <MobileTrackMenu />
+  <MobileUpdateNotice />
 </div>

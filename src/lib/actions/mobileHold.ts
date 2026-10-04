@@ -1,3 +1,4 @@
+import { mobileHaptic } from '$lib/mobileHaptics';
 import { isMobile } from '$lib/mobile';
 
 export function mobileHold(node: HTMLElement, options: { onHold: () => void }) {
@@ -33,7 +34,7 @@ export function mobileHold(node: HTMLElement, options: { onHold: () => void }) {
     timer = setTimeout(() => {
       if (activePointer !== event.pointerId) return;
       held = true;
-      navigator.vibrate?.(10);
+      mobileHaptic('light');
       current.onHold();
     }, 460);
   };

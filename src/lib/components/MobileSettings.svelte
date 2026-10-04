@@ -7,7 +7,7 @@
   import { APP_VERSION } from '$lib/version';
   import { withCount } from '$lib/utils/plural';
   import { checkMobileUpdate, isAndroidUpdateTarget, mobileUpdateState, openMobileUpdate, openLatestIOSRelease } from '$lib/mobileUpdates';
-  import { MOBILE_RELEASES_URL } from '$lib/mobileUpdateCore';
+  import { MOBILE_RELEASES_URL, mobileUpdateLink } from '$lib/mobileUpdateCore';
   import MobileConnections from './MobileConnections.svelte';
   import { allowMobilePlaylistReimport, removedMobilePlaylistCount } from '$lib/mobileTracks';
   let updateOpenError = $state('');
@@ -250,27 +250,27 @@
     <section class="mobile-settings-detail" aria-label={pageTitles[page]}>
     <div class="mobile-preference-card mobile-update-card">
       <div class="mobile-update-current"><span>Установлена версия</span><strong>{APP_VERSION}</strong></div>
-      {#if isAndroidUpdateTarget}
+      {#if isAndroidUpdateTarget || isIOS}
         {#if $mobileUpdateState.status === 'available' && $mobileUpdateState.update}
-          <p class="mobile-update-status" role="status">Доступна версия {$mobileUpdateState.update.version}. Файл APK опубликован в GitHub Releases.</p>
-          <button class="mobile-primary" onclick={() => openUpdate($mobileUpdateState.update!.apkUrl)}><Download size={18} aria-hidden="true" /> Скачать APK</button>
-          <p class="mobile-hint">Открой скачанный APK и подтверди обновление. Подпись должна совпадать с установленной версией.</p>
+          <p class="mobile-update-status" role="status">Доступна версия {$mobileUpdateState.update.version} на GitHub.</p>
+          <button class="mobile-primary" onclick={() => openUpdate(mobileUpdateLink($mobileUpdateState.update!))}><Download size={18} aria-hidden="true" /> Скачать {$mobileUpdateState.update.platform === 'ios' ? 'IPA' : 'APK'}</button>
         {:else if $mobileUpdateState.status === 'checking'}
           <p class="mobile-hint" role="status">Проверяем релизы GitHub...</p>
         {:else if $mobileUpdateState.status === 'current'}
-          <p class="mobile-hint" role="status">Новой Android-сборки пока нет.</p>
+          <p class="mobile-hint" role="status">Установлена последняя {isIOS ? 'iOS' : 'Android'}-версия.</p>
         {:else if $mobileUpdateState.status === 'error'}
           <p class="mobile-error" role="alert">{$mobileUpdateState.message}</p>
         {:else}
           <p class="mobile-hint">Проверка начнётся автоматически при запуске приложения.</p>
         {/if}
-        <button class="mobile-secondary" disabled={$mobileUpdateState.status === 'checking'} onclick={() => checkMobileUpdate(true)}><RefreshCw size={17} aria-hidden="true" /> Проверить сейчас</button>
-      {:else}
         {#if isIOS}
-          <button class="mobile-primary" disabled={checkingIOSRelease} onclick={checkIOSRelease}><RefreshCw size={18} class={checkingIOSRelease ? 'animate-spin' : ''} aria-hidden="true" /> {checkingIOSRelease ? 'Проверяем…' : 'Проверить обновление'}</button>
-          <p class="mobile-hint" role={checkingIOSRelease ? 'status' : undefined}>{checkingIOSRelease ? 'Ищем последнюю iOS-сборку на GitHub…' : 'Откроется последний iOS-релиз на GitHub. Скачай IPA и установи через AltStore.'}</p>
+          <button class="mobile-secondary" disabled={checkingIOSRelease || $mobileUpdateState.status === 'checking'} onclick={checkIOSRelease}><RefreshCw size={18} class={checkingIOSRelease ? 'animate-spin' : ''} aria-hidden="true" /> {checkingIOSRelease ? 'Проверяем…' : 'Проверить обновление'}</button>
+          <p class="mobile-hint">Откроется последний iOS-релиз на GitHub. Установи IPA через «+» в AltStore с тем же Apple ID. Обновляй подпись раз в 7 дней, пока AltServer запущен на Mac.</p>
+        {:else}
+          <button class="mobile-secondary" disabled={$mobileUpdateState.status === 'checking'} onclick={() => checkMobileUpdate(true)}><RefreshCw size={17} aria-hidden="true" /> Проверить сейчас</button>
+          <p class="mobile-hint">Открой скачанный APK и подтверди обновление. Подпись должна совпадать с установленной версией.</p>
         {/if}
-        <p class="mobile-hint">На iPhone открой новый IPA через «+» в AltStore с тем же Apple ID. Данные приложения сохранятся. Обновляй подпись в AltStore раз в 7 дней, пока AltServer запущен на Mac.</p>
+        <p class="mobile-hint">О новой версии напомним при запуске. «Позже» откладывает напоминание до следующего запуска; скачать обновление здесь можно в любой момент.</p>
       {/if}
       <button class="mobile-text-button" onclick={() => openUpdate(MOBILE_RELEASES_URL)}><ExternalLink size={17} aria-hidden="true" /> Все релизы GitHub</button>
       {#if updateOpenError}<p class="mobile-error" role="alert">{updateOpenError}</p>{/if}

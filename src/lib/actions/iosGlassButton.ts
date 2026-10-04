@@ -190,6 +190,9 @@ function stop() {
 /** UIKit's actual glass button; retains the existing Svelte click handler. */
 export function iosGlassButton(node: HTMLButtonElement, options: Options) {
   if (!isIOS || !isTauri()) return {};
+  // The player's transparent transport buttons share the composited WebKit
+  // surface. Keep the same small glyphs throughout artwork/lyrics motion.
+  if (options.style === 'plain' && node.closest('.mobile-player')) return {};
   if (!controls.size) start();
   const id = `ios-glass-${++sequence}`;
   const record = { node, options, originalHidden: node.getAttribute('aria-hidden') };

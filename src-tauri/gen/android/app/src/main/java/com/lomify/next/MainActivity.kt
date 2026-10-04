@@ -16,6 +16,18 @@ import android.webkit.WebView
 import androidx.activity.OnBackPressedCallback
 
 class MainActivity : TauriActivity() {
+  companion object {
+    private var activeActivity = java.lang.ref.WeakReference<MainActivity>(null)
+    @JvmStatic fun performHaptic(kind: Int) {
+      val activity = activeActivity.get() ?: return
+      activity.runOnUiThread {
+        if (!activity.isFinishing) activity.window.decorView.performHapticFeedback(
+          if (kind == 1) android.view.HapticFeedbackConstants.CONTEXT_CLICK
+          else android.view.HapticFeedbackConstants.CLOCK_TICK
+        )
+      }
+    }
+  }
   private external fun nativeVisibilityChanged(hidden: Boolean)
   private external fun nativeAudioOutputLost()
   // The playback service may not exist while the first track is downloading.
@@ -47,6 +59,7 @@ class MainActivity : TauriActivity() {
   override fun onCreate(savedInstanceState: Bundle?) {
     enableEdgeToEdge()
     super.onCreate(savedInstanceState)
+    activeActivity = java.lang.ref.WeakReference(this)
     ContextCompat.registerReceiver(this, outputLost,
       IntentFilter(AudioManager.ACTION_AUDIO_BECOMING_NOISY), ContextCompat.RECEIVER_EXPORTED)
     // Keep the WebView and touch controls outside system bars and display cutouts.
@@ -75,6 +88,7 @@ class MainActivity : TauriActivity() {
   }
 
   override fun onDestroy() {
+    if (activeActivity.get() === this) activeActivity.clear()
     unregisterReceiver(outputLost)
     super.onDestroy()
   }

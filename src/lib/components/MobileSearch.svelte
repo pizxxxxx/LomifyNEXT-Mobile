@@ -89,7 +89,7 @@
   {:else}
   <section class="mobile-discovery-search" use:mobileReveal={mode}>
     <h2>{mode === 'lyrics' ? 'Вспомнил строчку?' : 'Что хочется почувствовать?'}</h2>
-    <p class="mobile-hint">{mode === 'lyrics' ? 'Напиши несколько слов — найдём их в тексте песни.' : 'Опиши настроение или звучание своими словами.'}</p>
+    <p class="mobile-hint">{mode === 'lyrics' ? 'Напиши несколько слов — ищем по текстам в индексе SoundCloud.' : 'Опиши настроение или звучание своими словами.'}</p>
     <form class="mobile-discovery-input" onsubmit={event => { event.preventDefault(); input?.blur(); void run(); }}>
       <SearchIcon size={21} aria-hidden="true" />
       <input type="search" bind:this={input} bind:value={query} {placeholder} aria-label={placeholder} oninput={schedule} autocomplete="off" />

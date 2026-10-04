@@ -3,6 +3,8 @@
 #import <math.h>
 #import <WebKit/WebKit.h>
 
+void lomify_haptic(int kind);
+
 typedef void (*LomifyControlPressed)(const char *);
 @interface LomifyGlassButton : UIButton
 @property(nonatomic, copy) NSString *controlId;
@@ -60,7 +62,7 @@ typedef void (*LomifyControlPressed)(const char *);
     return target == self ? nil : target;
 }
 - (void)pressed:(LomifyGlassButton *)button {
-    if (self.callback && button.enabled) self.callback(button.controlId.UTF8String);
+    if (self.callback && button.enabled) { lomify_haptic(0); self.callback(button.controlId.UTF8String); }
 }
 - (void)userContentController:(WKUserContentController *)controller didReceiveScriptMessage:(WKScriptMessage *)message {
     if (![message.body isKindOfClass:NSDictionary.class] || !message.frameInfo.isMainFrame) return;
@@ -210,5 +212,22 @@ int lomify_controls_update(void *pointer, const char *json, double viewportWidth
             return 1;
         }
         return 0;
+    }
+}
+
+// Public UIKit feedback generators. Keep them on the main thread and respect
+// system behavior on devices without a Taptic Engine (including Simulator).
+void lomify_haptic(int kind) {
+    if (![NSThread isMainThread]) return;
+    if (kind == 1) {
+        static UIImpactFeedbackGenerator *impact;
+        if (!impact) impact = [[UIImpactFeedbackGenerator alloc] initWithStyle:UIImpactFeedbackStyleLight];
+        [impact impactOccurred];
+        [impact prepare];
+    } else {
+        static UISelectionFeedbackGenerator *selection;
+        if (!selection) selection = [UISelectionFeedbackGenerator new];
+        [selection selectionChanged];
+        [selection prepare];
     }
 }
