@@ -1,7 +1,7 @@
 /* Dedicated phone shell: no desktop window geometry or sidebar overrides. */
 .ios-swipe-player { translate: 0 var(--mobile-player-dismiss-y, 0px); transition: translate 280ms cubic-bezier(.22, 1, .36, 1); }
 .ios-swipe-player[data-swipe-dragging="true"], .ios-swipe-player[data-swipe-released="true"] { transition: none; }
-.ios-swipe-player .mobile-now-header { touch-action: pan-x; }
+.ios-swipe-player .mobile-now-header, .ios-swipe-player .mobile-now-dismiss { touch-action: none; }
 .ios-swipe-player .mobile-now-artwork, .ios-swipe-player .mobile-now-track-heading { touch-action: pan-x; }
 .mobile-app[data-motion="off"] .ios-swipe-player { transition: none; }
 .mobile-app [data-ios-glass-ready="true"] { opacity: 0 !important; pointer-events: none; }
