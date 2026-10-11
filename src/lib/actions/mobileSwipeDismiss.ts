@@ -4,8 +4,17 @@ import { isIOS } from '$lib/mobile';
 export function mobileSwipeDismiss(node: HTMLElement, dismiss: () => void) {
   if (!isIOS) return {};
   let pointer: number | null = null;
-  let startX = 0, startY = 0, lastY = 0, lastTime = 0, velocity = 0, distance = 0;
+  let startX = 0, startY = 0, lastTime = 0, velocity = 0, distance = 0;
   let dragging = false, suppressClick = false;
+  let samples: { y: number; time: number }[] = [];
+  function sample(y: number, time: number) {
+    samples.push({ y, time });
+    // Average a short window instead of letting one noisy pointer event set inertia.
+    while (samples.length > 2 && samples[1].time <= time - 80) samples.shift();
+    const first = samples[0];
+    velocity = time > first.time ? (y - first.y) / (time - first.time) : 0;
+    lastTime = time;
+  }
   const down = (event: PointerEvent) => {
     suppressClick = false;
     if (pointer !== null || !event.isPrimary || event.button !== 0) return;
@@ -15,9 +24,12 @@ export function mobileSwipeDismiss(node: HTMLElement, dismiss: () => void) {
     if (control && !control.classList.contains('mobile-now-dismiss') && !control.classList.contains('mobile-now-artwork')) return;
     pointer = event.pointerId;
     startX = event.clientX;
-    startY = lastY = event.clientY;
+    startY = event.clientY;
     lastTime = event.timeStamp;
     velocity = distance = 0;
+    samples = [{ y: startY, time: lastTime }];
+    delete node.dataset.swipeReleased;
+    node.style.removeProperty('--mobile-player-dismiss-velocity');
   };
   const move = (event: PointerEvent) => {
     if (event.pointerId !== pointer) return;
@@ -30,10 +42,7 @@ export function mobileSwipeDismiss(node: HTMLElement, dismiss: () => void) {
       node.setPointerCapture(event.pointerId);
     }
     event.preventDefault();
-    const elapsed = event.timeStamp - lastTime;
-    if (elapsed > 0) velocity = (event.clientY - lastY) / elapsed;
-    lastY = event.clientY;
-    lastTime = event.timeStamp;
+    sample(event.clientY, event.timeStamp);
     distance = Math.max(0, dy);
     node.style.setProperty('--mobile-player-dismiss-y', `${distance}px`);
   };
@@ -41,12 +50,22 @@ export function mobileSwipeDismiss(node: HTMLElement, dismiss: () => void) {
     if (event.pointerId !== pointer) return;
     pointer = null;
     if (!dragging) return;
+    // Include the release position, but a held finger no longer counts as a flick.
+    if (event.timeStamp - lastTime >= 80) velocity = 0;
+    else sample(event.clientY, event.timeStamp);
+    if (event.type === 'pointerup') {
+      distance = Math.max(0, event.clientY - startY);
+      node.style.setProperty('--mobile-player-dismiss-y', `${distance}px`);
+    }
     dragging = false;
     delete node.dataset.swipeDragging;
     if (node.hasPointerCapture(event.pointerId)) node.releasePointerCapture(event.pointerId);
-    const flick = event.timeStamp - lastTime < 120 && velocity > .55 && distance > 28;
-    if (event.type !== 'pointercancel' && (distance > Math.min(140, node.clientHeight * .16) || flick)) {
-      node.style.setProperty('--mobile-player-dismiss-y', `${node.clientHeight}px`);
+    const flick = velocity > .55 && distance > 28;
+    if (event.type === 'pointerup' && (distance > Math.min(140, node.clientHeight * .16) || flick)) {
+      node.dataset.swipeReleased = 'true';
+      node.style.setProperty('--mobile-player-dismiss-velocity', String(Math.max(0, velocity)));
+      // Keep the drag offset fixed. The Svelte outro owns the entire remaining
+      // movement, so a CSS translate transition cannot race it to the bottom.
       dismiss();
     } else node.style.setProperty('--mobile-player-dismiss-y', '0px');
   };
@@ -60,12 +79,14 @@ export function mobileSwipeDismiss(node: HTMLElement, dismiss: () => void) {
   node.addEventListener('pointermove', move);
   node.addEventListener('pointerup', end);
   node.addEventListener('pointercancel', end);
+  node.addEventListener('lostpointercapture', end);
   node.addEventListener('click', click, true);
   return { destroy() {
     node.removeEventListener('pointerdown', down);
     node.removeEventListener('pointermove', move);
     node.removeEventListener('pointerup', end);
     node.removeEventListener('pointercancel', end);
+    node.removeEventListener('lostpointercapture', end);
     node.removeEventListener('click', click, true);
   } };
 }

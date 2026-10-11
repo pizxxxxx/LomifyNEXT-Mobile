@@ -1,7 +1,7 @@
 <script lang="ts">
   import { pushMobileHistory } from '$lib/mobileNavigation';
   import { onMount, onDestroy, tick as svelteTick } from 'svelte';
-  import { cubicOut } from 'svelte/easing';
+  import { createMobilePlayerTransition } from '$lib/utils/mobilePlayerTransition';
   import { afterMobilePaint } from '$lib/utils/mobilePaint';
   import { Play, Pause, ChevronDown, Music2, MoreHorizontal, Plus, SlidersHorizontal, FastForward, Rewind, MessageSquareQuote } from 'lucide-svelte';
   import { mobileHold } from '$lib/actions/mobileHold';
@@ -72,16 +72,11 @@
     mobileExpanded = false;
     $currentView = view;
   }
-  function mobilePlayerTransition(node: Element, _params: unknown, options: { direction: 'in' | 'out' | 'both' }) {
-    const reduced = $settings.mobileMotion === false || matchMedia('(prefers-reduced-motion: reduce)').matches;
-    const duration = reduced ? 0 : options.direction === 'out' ? 360 : 480;
-    const distance = Math.max(0, node.clientHeight - Number.parseFloat((node as HTMLElement).style.getPropertyValue('--mobile-player-dismiss-y') || '0'));
-    node.dispatchEvent(new CustomEvent('lomify:layout-motion', { bubbles: true, detail: { duration: duration + 20 } }));
-    return {
-      duration,
-      easing: cubicOut,
-      css: (t: number) => `transform:translate3d(0,${(1 - t) * distance}px,0)`
-    };
+  function mobilePlayerTransition(node: Element) {
+    // Svelte passes "both" to a bidirectional transition's factory. Resolve
+    // direction and gesture state when each animation actually begins.
+    return ({ direction }: { direction: 'in' | 'out' } = { direction: 'in' }) => createMobilePlayerTransition(node as HTMLElement, direction,
+      $settings.mobileMotion === false || matchMedia('(prefers-reduced-motion: reduce)').matches);
   }
   function manageMobilePanel(node: HTMLElement, open: boolean) {
     let previous = false;
