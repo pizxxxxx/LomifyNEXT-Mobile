@@ -10,6 +10,7 @@ static APP: OnceLock<tauri::AppHandle> = OnceLock::new();
 
 #[cfg(target_os = "ios")]
 unsafe extern "C" {
+    fn lomify_webview_configure(webview: *mut c_void);
     fn lomify_navigation_update(
         webview: *mut c_void,
         selected: i32,
@@ -27,6 +28,14 @@ unsafe extern "C" {
         scroll_enabled: i32,
         callback: extern "C" fn(*const std::ffi::c_char),
     ) -> i32;
+}
+
+#[cfg(target_os = "ios")]
+pub fn configure_webview(app: &tauri::App) -> tauri::Result<()> {
+    if let Some(webview) = app.get_webview_window("main") {
+        webview.with_webview(|handle| unsafe { lomify_webview_configure(handle.inner()) })?;
+    }
+    Ok(())
 }
 
 #[cfg(target_os = "ios")]

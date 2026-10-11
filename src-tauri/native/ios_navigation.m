@@ -30,12 +30,20 @@ typedef void (*LomifyTabSelected)(int32_t);
 
 static LomifyTabs *navigation;
 
+// Keep the phone shell at its layout scale; scrolling and one-finger gestures stay enabled.
+void lomify_webview_configure(void *pointer) {
+    if (![NSThread isMainThread] || !pointer) return;
+    WKWebView *webView = (__bridge WKWebView *)pointer;
+    webView.scrollView.pinchGestureRecognizer.enabled = NO;
+}
+
 // Called by Tauri's with_webview on UIKit's main thread; no private APIs.
 int lomify_navigation_update(void *pointer, int32_t selected, int visible,
                              double red, double green, double blue, LomifyTabSelected callback) {
     @autoreleasepool {
         if (![NSThread isMainThread]) return 0;
         WKWebView *webView = (__bridge WKWebView *)pointer;
+        lomify_webview_configure(pointer);
         if (!webView.superview || !webView.window) return 0;
         if (!navigation) {
             UIResponder *responder = webView;

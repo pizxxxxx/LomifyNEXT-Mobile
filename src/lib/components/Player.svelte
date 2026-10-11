@@ -1616,7 +1616,7 @@
   {#if $currentTrack}
     {#if mobileExpanded}
     <div class="mobile-player expanded mobile-now-panel" class:show-lyrics={mobileShowLyrics} class:ios-swipe-player={isIOS} inert={!mobileExpanded} aria-hidden={!mobileExpanded} role="region" aria-label="Сейчас играет" use:mobileSwipeDismiss={closeMobilePlayer} use:mobileSwipeBack={true} use:manageMobilePanel={mobileExpanded} use:mobilePlayerArtwork use:mobileHold={{ onHold: () => mobileTrackMenu.set($currentTrack) }} transition:mobilePlayerTransition on:introstart={(event) => event.currentTarget?.dispatchEvent(new CustomEvent('lomify:layout-motion', { bubbles: true, detail: { duration: $settings.mobileMotion === false || mobileReducedMotion ? 0 : 500 } }))}>
-        <MobileVideoBackdrop track={$currentTrack} coverUrl={currentDisplayCover} active={$isPlaying && mobileDetailsReady && (!mobileShowLyrics || $settings.mobileLyricsVideoBackground !== false)} variant="player" />
+        <MobileVideoBackdrop track={$currentTrack} active={$isPlaying && mobileDetailsReady && (!mobileShowLyrics || $settings.mobileLyricsVideoBackground !== false)} variant="player" />
         <div class="mobile-now-shade" aria-hidden="true"></div>
         <div class="mobile-now-header">
           <button class="mobile-now-dismiss" aria-label="Свернуть плеер" on:click={closeMobilePlayer}><span aria-hidden="true"></span></button>

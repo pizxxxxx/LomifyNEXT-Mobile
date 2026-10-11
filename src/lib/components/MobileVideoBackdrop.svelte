@@ -6,13 +6,11 @@
   import { onMount } from 'svelte';
   import { settings } from '$lib/stores';
   import { getYandexBackgroundVideoUrl, normalizeYandexBackgroundVideoUrl } from '$lib/yandex';
-  import { handleArtworkError, handleArtworkLoad } from '$lib/offlineCovers';
   import { mobileDecorativeVideo } from '$lib/actions/mobileDecorativeVideo';
 
-  type VideoTrack = { source: string; id?: string; backgroundVideoUrl?: string; coverUrl?: string } | null;
-  let { track, coverUrl = '', active = true, variant }: {
+  type VideoTrack = { source: string; id?: string; backgroundVideoUrl?: string } | null;
+  let { track, active = true, variant }: {
     track: VideoTrack;
-    coverUrl?: string;
     active?: boolean;
     variant: 'player' | 'lyrics';
   } = $props();
@@ -50,7 +48,7 @@
       videoCache.set(cacheKey, entry);
       if (videoCache.size > 40) videoCache.delete(videoCache.keys().next().value!);
     }
-    void entry.request.then(url => { if (!cancelled) resolvedUrl = url; }).catch(() => { /* Cover or theme stays visible. */ });
+    void entry.request.then(url => { if (!cancelled) resolvedUrl = url; }).catch(() => { /* Theme stays visible. */ });
     return () => { cancelled = true; };
   });
 
@@ -70,11 +68,10 @@
 </script>
 
 <div class:mobile-now-art={variant === 'player'} class:mobile-lyrics-backdrop={variant === 'lyrics'} class="mobile-video-backdrop" aria-hidden="true">
-  {#if variant === 'player' && coverUrl}<img src={coverUrl} alt="" onerror={(event) => handleArtworkError(event, track?.coverUrl || '')} onload={handleArtworkLoad} />{/if}
   {#if showVideo}
     {#key videoUrl}
     <!-- svelte-ignore a11y_media_has_caption -->
-    <video src={videoUrl} use:mobileDecorativeVideo={enabled} muted loop playsinline preload="metadata" poster={coverUrl} onerror={() => failedUrl = videoUrl} aria-hidden="true"></video>
+    <video src={videoUrl} use:mobileDecorativeVideo={enabled} muted loop playsinline preload="metadata" onerror={() => failedUrl = videoUrl} aria-hidden="true"></video>
     {/key}
   {/if}
 </div>

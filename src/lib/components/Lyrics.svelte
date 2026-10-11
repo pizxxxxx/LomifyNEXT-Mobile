@@ -552,7 +552,7 @@
 <!-- svelte-ignore a11y-no-static-element-interactions -->
 <div class="h-full w-full flex-1 min-h-0" class:mobile-lyrics-view={mobileMode}>
 {#if mobileMode && !embedded && $currentTrack?.source === 'yandex' && $settings.mobileVideoBackground !== false && $settings.mobileLyricsVideoBackground !== false}
-  <MobileVideoBackdrop track={$currentTrack} coverUrl={$currentTrack.coverUrl} active={$isPlaying} variant="lyrics" />
+  <MobileVideoBackdrop track={$currentTrack} active={$isPlaying} variant="lyrics" />
 {/if}
 {#if active && mobileMode && activeAdlib && adlibsEnabled}
   {#key activeAdlib.id}

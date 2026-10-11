@@ -112,6 +112,8 @@ pub fn run() {
             android_audio::initialize()?;
             #[cfg(target_os = "ios")]
             ios_audio::initialize_session()?;
+            #[cfg(target_os = "ios")]
+            ios_navigation::configure_webview(app)?;
             request_low_webview_memory(app);
 
             let cache_dir = app

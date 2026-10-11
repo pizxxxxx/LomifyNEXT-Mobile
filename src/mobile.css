@@ -25,6 +25,7 @@ body[data-mobile="true"] {
   min-width: 0;
   margin: 0;
   overscroll-behavior: none;
+  touch-action: pan-x pan-y;
 }
 body[data-mobile="true"] { --font-ui: 'Onest Variable', 'Segoe UI', sans-serif; }
 body[data-mobile-font="inter"] { --font-ui: 'Inter Variable', 'Segoe UI', sans-serif; }
@@ -38,7 +39,7 @@ body[data-global-theme="true"] .mobile-app::before { opacity: 1; }
 .mobile-app[data-text-weight="bold"] { font-weight: 600; }
 .mobile-app button, .mobile-app input, .mobile-app select { font-family: inherit; }
 .mobile-app *, .mobile-app *::before, .mobile-app *::after { box-sizing: border-box; }
-.mobile-app button, .mobile-app input, .mobile-app select, .mobile-app summary { touch-action: manipulation; }
+.mobile-app button, .mobile-app input, .mobile-app select, .mobile-app summary { touch-action: pan-x pan-y; }
 .mobile-app button { transition: transform 150ms cubic-bezier(0.2, 0, 0, 1), opacity 150ms ease, background-color 150ms ease, color 150ms ease; }
 .mobile-app button:active:not(:disabled) { transform: scale(.96); opacity: .8; transition-duration: 0ms; }
 .mobile-app button:disabled { opacity: .45; }
@@ -312,11 +313,11 @@ body[data-global-theme="true"] .mobile-app::before { opacity: 1; }
 .mobile-player.expanded > .mobile-now-header, .mobile-player.expanded > .mobile-now-middle, .mobile-player.expanded > .mobile-now-bottom { min-width: 0; max-width: min(100%, 640px); }
 .mobile-player.mobile-now-panel { isolation: isolate; }
 .mobile-now-art, .mobile-now-shade { position: absolute; inset: 0; pointer-events: none; }
-.mobile-now-art { z-index: -2; background: radial-gradient(circle at 50% 24%, color-mix(in srgb, var(--mobile-accent) 25%, #1c1c23), #0b0b0e 75%); overflow: hidden; }
-.mobile-now-art img, .mobile-now-art video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+.mobile-now-art { z-index: 0; background: radial-gradient(circle at 50% 24%, color-mix(in srgb, var(--mobile-accent) 25%, #1c1c23), #0b0b0e 75%); overflow: hidden; }
+.mobile-now-art video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
 .mobile-video-backdrop video { opacity: 0; transition: opacity 420ms ease; }
 .mobile-video-backdrop video.ready { opacity: 1; }
-.mobile-now-shade { z-index: -1; background: linear-gradient(180deg, rgb(0 0 0 / .58) 0%, rgb(0 0 0 / .38) 30%, rgb(0 0 0 / .46) 47%, rgb(0 0 0 / .80) 74%, rgb(0 0 0 / .91) 100%); }
+.mobile-now-shade { z-index: 0; background: linear-gradient(180deg, rgb(0 0 0 / .58) 0%, rgb(0 0 0 / .38) 30%, rgb(0 0 0 / .46) 47%, rgb(0 0 0 / .80) 74%, rgb(0 0 0 / .91) 100%); }
 .mobile-now-header { position: relative; z-index: 1; display: grid; grid-template-columns: 48px minmax(0,1fr) 48px; align-items: center; gap: 10px; flex-shrink: 0; min-height: 56px; }
 .mobile-now-glass-button, .mobile-now-next, .mobile-now-controls, .mobile-now-extra-group { border: 1px solid rgb(255 255 255 / .19); background: rgb(16 16 20 / .43); color: #fff; }
 .mobile-now-glass-button { border-radius: 50%; }
@@ -958,7 +959,6 @@ body[data-ios-scroll="artist"]:has(.mobile-player.expanded:not([inert]), dialog[
 .mobile-library .mobile-playlist-detail-cover { width: min(58vw, 224px); height: min(58vw, 224px); border-radius: 18px; outline: 1px solid rgb(255 255 255 / .1); }
 .mobile-library .mobile-playlist-detail-head h1 { font-size: 26px; font-weight: 700; letter-spacing: -.025em; }
 .mobile-liked-cover { color: #fff; background: linear-gradient(145deg, color-mix(in srgb, var(--color-primary, #ff884d) 75%, #36101b), color-mix(in srgb, var(--color-primary, #ff884d) 34%, #21121b)); }
-.mobile-now-panel .mobile-now-art > img { opacity: .3; }
 .mobile-now-panel .mobile-now-header { min-height: 32px; }
 .mobile-now-panel .mobile-now-track-heading { position: relative; grid-template-columns: minmax(0, 1fr) 44px 44px; height: 88px; min-height: 88px; transform: translateY(0); transition: transform 620ms cubic-bezier(0.22, 1, 0.36, 1); }
 .mobile-now-panel .mobile-now-cover { position: absolute; left: 0; top: 12px; width: 52px; height: 52px; opacity: 0; transform: scale(.72); pointer-events: none; transition: transform 620ms cubic-bezier(0.22, 1, 0.36, 1), opacity 180ms ease; }
