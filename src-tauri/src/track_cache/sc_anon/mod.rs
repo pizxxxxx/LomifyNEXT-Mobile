@@ -163,6 +163,56 @@ impl AnonClient {
         result
     }
 
+    /// Resolve only; the audio engine streams the bytes and owns playback memory.
+    #[cfg(any(target_os = "android", target_os = "ios"))]
+    pub async fn resolve_stream_url(&self, urn: &str) -> Result<Option<String>, String> {
+        if !urn.starts_with("lomify:soundcloud:") {
+            return Ok(None);
+        }
+        let id = urn.rsplit(':').next().unwrap_or(urn);
+        let mut last_error = None;
+        for attempt in 0..2 {
+            if attempt > 0 {
+                self.invalidate_and_refresh().await?;
+            }
+            let track = self.get_track_by_id(id).await?;
+            let transcodings = track
+                .media
+                .as_ref()
+                .and_then(|m| m.transcodings.as_deref())
+                .unwrap_or(&[]);
+            let mut candidates = ranked_transcodings(transcodings);
+            // Playback can use a public preview if that is all SC offers.
+            // get_stream/download continues to reject previews above.
+            candidates.extend(transcodings.iter().filter(|t| {
+                let protocol = t
+                    .format
+                    .as_ref()
+                    .and_then(|f| f.protocol.as_deref())
+                    .unwrap_or("");
+                (t.snipped.unwrap_or(false) || t.url.contains("/preview"))
+                    && matches!(protocol, "hls" | "progressive")
+            }));
+            for transcoding in candidates {
+                match self
+                    .resolve_transcoding_url(
+                        &transcoding.url,
+                        None,
+                        track.track_authorization.as_deref(),
+                    )
+                    .await
+                {
+                    Ok(url) => return Ok(Some(url)),
+                    Err(error) => last_error = Some(error),
+                }
+            }
+        }
+        match last_error {
+            Some(error) => Err(error),
+            None => Ok(None),
+        }
+    }
+
     async fn do_get_stream(&self, track_urn: &str) -> Result<Option<AnonStreamResult>, String> {
         let track_id = track_urn.rsplit(':').next().unwrap_or(track_urn);
 

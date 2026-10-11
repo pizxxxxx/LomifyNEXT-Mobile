@@ -130,7 +130,8 @@
   } from 'lucide';
   import { currentTrack, isPlaying, progress, duration as durationStore, currentView, previousView, settings, equalizerBands, listenStats, queue, likedTracks, trackHistory, notify, playlists, globalVolume, lyricsStatus } from '$lib/stores';
   import { buildTrackUrn } from '$lib/utils/trackUrn';
-  import { getAudioUrl, getTrackInfo, getLyrics } from '$lib/api';
+  import { getAudioUrl, getTrackInfo, getLyrics, knownYandexPlaybackId } from '$lib/api';
+  import { normalizeYandexToken } from '$lib/yandex';
   import { waveActive, waveRefill, waveTrackDone, stopWave } from '$lib/wave';
   import { invoke } from '@tauri-apps/api/core';
   import { listen } from '@tauri-apps/api/event';
@@ -371,7 +372,7 @@
   const backgroundEpochBase = Date.now() * 1000;
   type BackgroundAdvance = { sequence: number; key: string; durationSecs: number | null; previous?: boolean };
   type BackgroundStatus = { epoch: number; sequence: number; loading: boolean; advances: BackgroundAdvance[] };
-  type NativeTrackSource = { key: string; title: string; artist: string; coverUrl: string | null; filePath: string | null; url: string | null };
+  type NativeTrackSource = { key: string; title: string; artist: string; coverUrl: string | null; filePath: string | null; url: string | null; resolver?: { kind: 'yandex'; id: string; token: string; dataSaver: boolean } | { kind: 'soundcloud' }; repeat?: boolean; autoCache?: boolean; durationMs?: number | null };
   type BackgroundCandidate = { epoch: number; track: any; index: number; key: string; source?: NativeTrackSource };
   let nativeCurrentSource: NativeTrackSource | null = null;
   let backgroundCandidates: BackgroundCandidate[] = [];
@@ -380,10 +381,22 @@
   let backgroundEndPending = false;
   let lastBackgroundSequence = 0;
 
-  // A hidden WebView is not a reliable queue runner. Resolve up to two successors
-  // while it is active; Rust only loads each audio source when the previous one ends.
-  async function prepareBackgroundNext(epoch: number) {
-    if (!mobile || epoch !== loadGeneration) return;
+  function nativeSourceForTrack(track: any): NativeTrackSource {
+    const config = get(settings);
+    const yandexId = knownYandexPlaybackId(track);
+    const resolver: NativeTrackSource['resolver'] = yandexId && config.yandexToken
+      ? { kind: 'yandex', id: yandexId, token: normalizeYandexToken(config.yandexToken), dataSaver: config.mobileDataSaver === true }
+      : track.source === 'soundcloud' ? { kind: 'soundcloud' } : undefined;
+    const local = track.isLocal || track.source === 'Локальный';
+    return { key: buildUrn(track), title: track.title, artist: track.artist, coverUrl: track.coverUrl || null,
+      filePath: local ? track.audioUrl : null, url: !local && /^https?:/i.test(track.audioUrl || '') ? track.audioUrl : null, resolver,
+      autoCache: config.autoCache === true, durationMs: Number(track.duration) || null };
+  }
+
+  // Publish queue identities immediately. Rust resolves each stream just before
+  // playback, so neither suspended JS nor an old signed URL holds the queue up.
+  async function prepareBackgroundNext(epoch: number, initialLoad = false) {
+    if (!mobile || epoch !== loadGeneration || (document.hidden && !initialLoad)) return;
     const request = ++backgroundPrepareRequest;
     const q = get(queue);
     const indices = q.map((_, index) => index);
@@ -395,63 +408,57 @@
     }
     const requested = q.findIndex(track => track.mobileQueuedNext === true);
     if (requested >= 0) indices.splice(0, 0, ...indices.splice(indices.indexOf(requested), 1));
-    const planned = repeatMode === 2 ? [-1] : indices.slice(0, 2);
+    const planned = repeatMode === 2 ? [-1] : indices.slice(0, 200);
     const nativeEpoch = backgroundEpochBase + epoch;
     const resolved: BackgroundCandidate[] = [];
-    const sources: Array<{ key: string; title: string; artist: string; coverUrl: string | null; filePath: string | null; url: string | null }> = [];
-    await invoke('audio_background_prepare', { epoch: nativeEpoch, candidates: [] });
-    if (usesNativeMobileAudio) {
-      const current = get(currentTrack);
-      if (current && nativeCurrentSource) {
-        resolved.push({ epoch: nativeEpoch, track: current, index: -3, key: nativeCurrentSource.key, source: nativeCurrentSource });
-        backgroundCandidates = [...resolved];
-      }
-      await invoke(previousPrepareCommand, { epoch: nativeEpoch, previous: null, current: nativeCurrentSource });
-      const track = get(trackHistory).at(-1);
-      if (track) {
-        try {
-          const key = buildUrn(track);
-          const filePath = track.isLocal || track.source === 'Локальный' ? track.audioUrl : await invoke<string | null>('track_get_cache_path', { urn: key });
-          const url = filePath ? null : await getAudioUrl(track, { silent: true });
-          if (epoch !== loadGeneration || request !== backgroundPrepareRequest) return;
-          if (filePath || url) {
-            resolved.push({ epoch: nativeEpoch, track, index: -2, key, source: { key, title: track.title, artist: track.artist, coverUrl: track.coverUrl || null, filePath, url } });
-            backgroundCandidates = [...resolved];
-            await invoke(previousPrepareCommand, { epoch: nativeEpoch, previous: { key, title: track.title, artist: track.artist, coverUrl: track.coverUrl || null, filePath, url }, current: nativeCurrentSource });
-          }
-        } catch (error) { console.warn('[player] previous preparation failed', error); }
-      }
-    }
-
-    if (!planned.length || $settings.preloadNext === false) {
-      void invoke('audio_prefetch_url', { url: null });
+    const sources: NativeTrackSource[] = [];
+    const current = get(currentTrack);
+    if (current) {
+      const source = nativeCurrentSource || nativeSourceForTrack(current);
+      resolved.push({ epoch: nativeEpoch, track: current, index: -3, key: source.key, source });
     }
     for (const index of planned) {
-      const track = index < 0 ? get(currentTrack) : q[index];
-      if (!track || epoch !== loadGeneration || request !== backgroundPrepareRequest) return;
-      const key = buildUrn(track);
-      let filePath: string | null = null;
-      let url: string | null = null;
-      try {
-        if (track.isLocal || track.source === 'Локальный') filePath = track.audioUrl;
-        else filePath = await invoke<string | null>('track_get_cache_path', { urn: key });
-        if (!filePath) url = await getAudioUrl(track, { silent: true });
-        if (epoch !== loadGeneration || request !== backgroundPrepareRequest) return;
-        const currentIndex = index < 0 ? -1 : get(queue).findIndex(item => item === track);
-        if (index >= 0 && currentIndex < 0 || !filePath && !url) break;
-        resolved.push({ epoch: nativeEpoch, track, index: currentIndex, key, source: { key, title: track.title, artist: track.artist, coverUrl: track.coverUrl || null, filePath, url } });
-        sources.push({ key, title: track.title, artist: track.artist, coverUrl: track.coverUrl || null, filePath, url });
-        if (sources.length === 1 && index >= 0) {
-          preparedNext = { queueRef: q, index: currentIndex, urn: key, url };
-          void invoke('audio_prefetch_url', { url: $settings.preloadNext === false ? null : url }).catch(() => {});
-        }
-        backgroundCandidates = [...resolved];
-        await invoke('audio_background_prepare', { epoch: nativeEpoch, candidates: [...sources] });
-      } catch (error) {
-        console.warn('[player] background next unavailable', error);
-        break;
-      }
+      const track = index < 0 ? current : q[index];
+      if (!track) continue;
+      const source = nativeSourceForTrack(track);
+      source.repeat = repeatMode === 2;
+      sources.push(source);
+      resolved.push({ epoch: nativeEpoch, track, index, key: source.key, source });
     }
+    backgroundCandidates = [...resolved];
+    await invoke('audio_background_prepare', { epoch: nativeEpoch, candidates: sources });
+    if (epoch !== loadGeneration || request !== backgroundPrepareRequest) return;
+    const previous = get(trackHistory).at(-1);
+    const previousSource = previous ? nativeSourceForTrack(previous) : null;
+    if (previous && previousSource) {
+      resolved.push({ epoch: nativeEpoch, track: previous, index: -2, key: previousSource.key, source: previousSource });
+      backgroundCandidates = [...resolved];
+    }
+    await invoke(previousPrepareCommand, { epoch: nativeEpoch, previous: previousSource,
+      current: current ? nativeCurrentSource || nativeSourceForTrack(current) : null });
+    if (document.hidden) return;
+    // Preload only the first successor's bounded audio buffer. Preparing 200
+    // identities does not download 200 tracks or grow the disk cache.
+    const first = planned[0];
+    const next = first == null ? null : first < 0 ? current : q[first];
+    if (!next || $settings.preloadNext === false) {
+      void invoke('audio_prefetch_url', { url: null });
+      return;
+    }
+    try {
+      const key = buildUrn(next);
+      const filePath = next.isLocal ? next.audioUrl : await invoke<string | null>('track_get_cache_path', { urn: key });
+      const url = filePath ? null : await getAudioUrl(next, { silent: true });
+      if (epoch !== loadGeneration || request !== backgroundPrepareRequest) return;
+      preparedNext = { queueRef: q, index: first, urn: key, url };
+      // Also retain the resolved URL as a fallback if the metadata API goes down.
+      if (url && sources[0]) {
+        sources[0].url = url;
+        if (resolved.find(item => item.index === first)?.source) resolved.find(item => item.index === first)!.source!.url = url;
+        await invoke('audio_background_prepare', { epoch: nativeEpoch, candidates: sources });
+      }
+      void invoke('audio_prefetch_url', { url }).catch(() => {});
+    } catch (error) { console.warn('[player] optional next prefetch failed', error); }
   }
 
   $: if (mobile && $queue && loadingGeneration === null && duration > 0) {
@@ -872,7 +879,6 @@
   onMount(() => {
     const onVisibilityChange = () => {
       if (!mobile) return;
-      if (document.hidden && $currentTrack) void prepareBackgroundNext(loadGeneration);
       void invoke<BackgroundStatus>('audio_background_set_hidden', { hidden: document.hidden })
         .then(async status => {
           if (document.hidden) return;
@@ -914,6 +920,9 @@
     };
     window.addEventListener('trackCacheChanged', handleTrackCacheChanged);
 
+    trackListener(listen<{ urn: string; cached: boolean }>('trackCacheChanged', event => {
+      window.dispatchEvent(new CustomEvent('trackCacheChanged', { detail: event.payload }));
+    }));
     trackListener(listen('audio:tick', (event) => {
       // Muted mid-scrub: the dot must follow the cursor, not the backend position.
       if (isScrubbing) return;
@@ -1226,10 +1235,15 @@
       } catch(e) {}
     }
 
+    const nativeSource = usesNativeMobileAudio ? nativeSourceForTrack(currentTrackObj) : null;
+    const needsTwinSearch = currentTrackObj.source === 'soundcloud' && $settings.searchSource === 'yandex' && $settings.yandexToken && !knownYandexPlaybackId(currentTrackObj);
+    const nativeResolve = !!nativeSource?.resolver && !needsTwinSearch && !isLocalFile && !isCached;
     let url: string | null = null;
     let urlError: unknown = null;
     if (isCached || isLocalFile) {
       url = currentTrackObj.audioUrl || "dummy://url";
+    } else if (nativeResolve) {
+      url = 'native://source';
     } else if (prepared?.url) {
       // Ссылка уже получена за три секунды до конца прошлого трека — идём сразу в поток.
       // Просрочиться она не страшно: `streamWithFreshSignature` подпишет заново на 403/410.
@@ -1293,7 +1307,18 @@
       });
 
     let loadPromise;
-    if (!isLocalFile) {
+    if (nativeResolve && nativeSource) {
+      nativeSource.url ||= prepared?.url || null;
+      nativeCurrentSource = nativeSource;
+      // Publish the entire known queue before network work starts. The optional
+      // prefetch continues independently and cannot delay this load.
+      void prepareBackgroundNext(generation, true).catch(error => console.warn('[player] initial queue preparation failed', error));
+      const previous = get(trackHistory).at(-1);
+      loadPromise = invoke('audio_load_mobile_source', { source: nativeSource,
+        candidates: backgroundCandidates.filter(item => item.index >= 0 || item.index === -1).map(item => item.source),
+        previous: previous ? nativeSourceForTrack(previous) : null,
+        epoch: backgroundEpochBase + generation, crossfadeMs, remainingMs: outgoingRemainingMs(crossfadeMs) });
+    } else if (!isLocalFile) {
       try {
          const request = {
            urn: urn,
@@ -1345,7 +1370,7 @@
       if (usesNativeMobileAudio) {
         const filePath = isLocalFile ? localPath : await invoke<string | null>('track_get_cache_path', { urn }).catch(() => null);
         if (generation !== loadGeneration) return;
-        nativeCurrentSource = { key: urn, title: currentTrackObj.title, artist: currentTrackObj.artist, coverUrl: currentTrackObj.coverUrl || null, filePath, url: /^https?:/i.test(safeUrl) ? safeUrl : null };
+        nativeCurrentSource = { ...nativeSourceForTrack(currentTrackObj), filePath, url: /^https?:/i.test(safeUrl) ? safeUrl : prepared?.url || null };
       }
       const nativePlaying = usesNativeMobileAudio ? await invoke<boolean>('audio_is_playing') : true;
       if (mobile && generation !== loadGeneration) return;

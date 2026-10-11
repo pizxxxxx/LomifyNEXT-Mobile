@@ -21,6 +21,25 @@ pub struct BackgroundTrack {
     pub cover_url: Option<String>,
     pub file_path: Option<String>,
     pub url: Option<String>,
+    /// Session-only credentials. Never part of BackgroundStatus, disk, or logs.
+    pub resolver: Option<BackgroundResolver>,
+    #[serde(default)]
+    pub repeat: bool,
+    #[serde(default)]
+    pub auto_cache: bool,
+    pub duration_ms: Option<u64>,
+}
+
+#[derive(Clone, Deserialize)]
+#[serde(tag = "kind", rename_all = "camelCase")]
+pub enum BackgroundResolver {
+    Yandex {
+        id: String,
+        token: String,
+        #[serde(default, rename = "dataSaver")]
+        data_saver: bool,
+    },
+    Soundcloud,
 }
 
 #[derive(Clone, Default, Serialize)]
@@ -94,23 +113,40 @@ pub fn status() -> BackgroundStatus {
 }
 
 #[cfg(any(target_os = "android", target_os = "ios"))]
-pub fn prepare_previous(epoch: u64, previous: Option<BackgroundTrack>, current: Option<BackgroundTrack>) {
+pub fn prepare_previous(
+    epoch: u64,
+    previous: Option<BackgroundTrack>,
+    current: Option<BackgroundTrack>,
+) {
     let mut background = state().lock().unwrap();
-    if background.status.epoch != epoch || background.status.loading || !background.status.advances.is_empty() { return; }
+    if background.status.epoch != epoch
+        || background.status.loading
+        || !background.status.advances.is_empty()
+    {
+        return;
+    }
     background.previous = previous;
     background.current = current;
 }
 
 #[cfg(any(target_os = "android", target_os = "ios"))]
-pub fn is_hidden() -> bool { state().lock().unwrap().hidden }
+pub fn is_hidden() -> bool {
+    state().lock().unwrap().hidden
+}
 
 #[cfg(any(target_os = "android", target_os = "ios"))]
 pub fn try_previous(app: &AppHandle) -> bool {
     let (epoch, candidate) = {
         let mut background = state().lock().unwrap();
-        if !background.hidden { return false; }
-        if background.status.loading { return true; }
-        let Some(candidate) = background.previous.take() else { return false; };
+        if !background.hidden {
+            return false;
+        }
+        if background.status.loading {
+            return true;
+        }
+        let Some(candidate) = background.previous.take() else {
+            return false;
+        };
         background.status.loading = true;
         (background.status.epoch, candidate)
     };
@@ -126,7 +162,9 @@ pub fn try_advance(app: &AppHandle) -> bool {
         if !background.hidden {
             return false;
         }
-        if background.status.loading { return true; }
+        if background.status.loading {
+            return true;
+        }
         let Some(candidate) = background.candidates.pop_front() else {
             return false;
         };
@@ -139,14 +177,27 @@ pub fn try_advance(app: &AppHandle) -> bool {
 
 #[cfg(any(target_os = "android", target_os = "ios"))]
 fn load_candidate(app: &AppHandle, epoch: u64, candidate: BackgroundTrack, previous: bool) {
+    let audio_generation = app.state::<AudioState>().load_gen.load(std::sync::atomic::Ordering::Relaxed);
     let app = app.clone();
     tauri::async_runtime::spawn(async move {
+        if state().lock().unwrap().status.epoch != epoch {
+            return;
+        }
+        if app.state::<AudioState>().load_gen.load(std::sync::atomic::Ordering::Relaxed) != audio_generation {
+            state().lock().unwrap().status.loading = false;
+            return;
+        }
         let cache_dir = app
             .path()
             .app_cache_dir()
             .ok()
             .map(|p| p.join("audio-normalization"));
-        let result = if let Some(path) = candidate.file_path.clone() {
+        let file_path = candidate
+            .file_path
+            .clone()
+            .or_else(|| crate::track_cache::background_cache_path(&app, &candidate.key));
+        let mut stream_url = None;
+        let result = if let Some(path) = file_path {
             engine::load_file(
                 path,
                 cache_dir,
@@ -158,22 +209,36 @@ fn load_candidate(app: &AppHandle, epoch: u64, candidate: BackgroundTrack, previ
                 app.state::<AudioState>(),
             )
             .await
-        } else if let Some(url) = candidate.url.clone() {
-            engine::load_url(
-                url,
-                None,
-                None,
-                cache_dir,
-                Some(candidate.key.clone()),
-                false,
-                0,
-                0,
-                &app,
-                app.state::<AudioState>(),
-            )
-            .await
         } else {
-            Err("background track has no source".into())
+            // Signed URLs prepared in JavaScript can expire while the screen is off.
+            // Resolve immediately before loading, entirely outside the WebView.
+            let url = super::background_source::resolve(&candidate).await;
+            if state().lock().unwrap().status.epoch != epoch {
+                return;
+            }
+            if app.state::<AudioState>().load_gen.load(std::sync::atomic::Ordering::Relaxed) != audio_generation {
+                state().lock().unwrap().status.loading = false;
+                return;
+            }
+            match url {
+                Ok(url) => {
+                    stream_url = Some(url.clone());
+                    engine::load_url(
+                        url,
+                        None,
+                        None,
+                        cache_dir,
+                        Some(candidate.key.clone()),
+                        false,
+                        0,
+                        0,
+                        &app,
+                        app.state::<AudioState>(),
+                    )
+                    .await
+                }
+                Err(error) => Err(error),
+            }
         };
 
         match result {
@@ -182,6 +247,9 @@ fn load_candidate(app: &AppHandle, epoch: u64, candidate: BackgroundTrack, previ
                     return;
                 }
                 engine::play(&app, app.state::<AudioState>());
+                if let Some(url) = stream_url {
+                    crate::track_cache::cache_background_track(&app, &candidate, url);
+                }
                 let duration = loaded.duration_secs;
                 let mut background = state().lock().unwrap();
                 if background.status.epoch != epoch {
@@ -192,8 +260,15 @@ fn load_candidate(app: &AppHandle, epoch: u64, candidate: BackgroundTrack, previ
                 {
                     let old = background.current.replace(candidate.clone());
                     if previous {
-                        if let Some(old) = old { background.candidates.push_front(old); }
-                    } else { background.previous = old; }
+                        if let Some(old) = old {
+                            background.candidates.push_front(old);
+                        }
+                    } else {
+                        background.previous = old;
+                    }
+                    if candidate.repeat {
+                        background.candidates.push_back(candidate.clone());
+                    }
                 }
                 background.status.sequence += 1;
                 let sequence = background.status.sequence;
@@ -213,12 +288,24 @@ fn load_candidate(app: &AppHandle, epoch: u64, candidate: BackgroundTrack, previ
                         candidate.cover_url.as_deref(),
                         duration.unwrap_or(0.0),
                     );
-                    crate::android_media::playback(engine::is_playing(app.state::<AudioState>()), 0.0);
+                    crate::android_media::playback(
+                        engine::is_playing(app.state::<AudioState>()),
+                        0.0,
+                    );
                 }
                 #[cfg(target_os = "ios")]
                 {
-                    crate::ios_media::metadata(&candidate.title, &candidate.artist, candidate.cover_url.as_deref(), duration.unwrap_or(0.0));
-                    crate::ios_media::playback(engine::is_playing(app.state::<AudioState>()), 0.0, 1.0);
+                    crate::ios_media::metadata(
+                        &candidate.title,
+                        &candidate.artist,
+                        candidate.cover_url.as_deref(),
+                        duration.unwrap_or(0.0),
+                    );
+                    crate::ios_media::playback(
+                        engine::is_playing(app.state::<AudioState>()),
+                        0.0,
+                        1.0,
+                    );
                 }
                 let _ = app.emit("audio:background-advanced", status);
             }
@@ -234,7 +321,10 @@ fn load_candidate(app: &AppHandle, epoch: u64, candidate: BackgroundTrack, previ
                 if background.status.epoch == epoch {
                     background.status.loading = false;
                     drop(background);
-                    let _ = app.emit("audio:ended", ());
+                    // A bad item must not hand the queue back to sleeping JavaScript.
+                    if previous || !try_advance(&app) {
+                        let _ = app.emit("audio:ended", ());
+                    }
                 }
             }
         }

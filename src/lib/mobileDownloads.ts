@@ -15,8 +15,9 @@ let running = false;
 
 function persist(tracks: any[]) {
   // Keep display metadata, never signed stream URLs or account credentials.
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(tracks));
   mobileDownloads.set(tracks);
+  try { localStorage.setItem(STORAGE_KEY, JSON.stringify(tracks)); }
+  catch { /* The audio is cached even if WebView metadata storage is full. */ }
 }
 function publish(urn: string, cached: boolean) {
   window.dispatchEvent(new CustomEvent('trackCacheChanged', { detail: { urn, cached } }));
@@ -70,22 +71,46 @@ async function drain() {
       const urn = buildTrackUrn(track);
       updateJob(urn, { status: 'downloading', progress: 0 });
       try {
-        const url = await getAudioUrl(track, { fullTrackRequired: true });
-        if (!url) throw new Error('Источник не дал ссылку на трек.');
-        await invoke('track_ensure_cached', { request: {
-          urn, url, urls: [url], coverUrl: track.coverUrl || null,
-          durationMs: Number(track.duration) || null, hq: false
-        } });
+        for (let attempt = 0; ; attempt++) {
+          try {
+            const url = await getAudioUrl(track, { fullTrackRequired: true, fresh: attempt > 0, silent: true });
+            if (!url) throw new Error('Источник не дал ссылку на полный трек.');
+            await invoke('track_ensure_cached', { request: {
+              urn, url, urls: [url], coverUrl: track.coverUrl || null,
+              durationMs: Number(track.duration) || null, hq: false
+            } });
+            break;
+          } catch (error) {
+            // Match playback: one new resolution replaces an expired CDN URL.
+            // Permanent access/disk errors are not helped by another transfer.
+            if (attempt > 0 || permanentDownloadError(error)) throw error;
+          }
+        }
         const metadata = { id: track.id, source: track.source, title: track.title, artist: track.artist,
           coverUrl: track.coverUrl || '', duration: track.duration || 0, genre: track.genre || '' };
         persist([...get(mobileDownloads).filter(t => buildTrackUrn(t) !== urn), metadata]);
         publish(urn, true);
         updateJob(urn);
-      } catch {
-        updateJob(urn, { status: 'error', progress: 0, error: 'Не скачалось. Проверь сеть и повтори.' });
+      } catch (error) {
+        updateJob(urn, { status: 'error', progress: 0, error: downloadErrorMessage(error) });
       }
     }
   } finally { running = false; }
+}
+
+function errorText(error: unknown): string {
+  return error instanceof Error ? error.message : String(error || '');
+}
+function permanentDownloadError(error: unknown): boolean {
+  return /no space|disk full|cache (write|flush|create)|permission denied|DRM|preview|превью|полный трек|недоступен|not available|HTTP (404|410)/i.test(errorText(error));
+}
+function downloadErrorMessage(error: unknown): string {
+  const message = errorText(error);
+  if (/no space|disk full|os error 28/i.test(message)) return 'Недостаточно места на устройстве.';
+  if (/cache (write|flush|create)|permission denied/i.test(message)) return 'Не удалось сохранить файл на устройстве.';
+  if (/DRM|preview|превью|полный трек|недоступен|not available|HTTP (404|410)/i.test(message)) return 'Источник не отдал полный трек для скачивания.';
+  if (/HTTP (401|403)|токен|авторизац/i.test(message)) return 'Источник отклонил загрузку. Проверь подключение аккаунта.';
+  return 'Не удалось скачать трек. Проверь сеть и повтори.';
 }
 
 export function stopMobileDownloadQueue() {

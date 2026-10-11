@@ -1252,7 +1252,7 @@ export async function yandexSetLikes(
   liked: boolean
 ): Promise<void> {
   const token = normalizeYandexToken(rawToken);
-  const ids = trackIds.map((id) => `${id ?? ''}`.trim()).filter(Boolean);
+  const ids = [...new Set(trackIds.map((id) => `${id ?? ''}`.split(':')[0].trim()).filter(id => /^\d+$/.test(id)))];
   if (!token || ids.length === 0) return;
 
   const uid = await accountUid(token);
@@ -1562,7 +1562,7 @@ export async function getYandexStreamUrl(
   opts: { fresh?: boolean } = {}
 ): Promise<string | null> {
   const token = normalizeYandexToken(rawToken);
-  const id = `${trackId ?? ''}`.trim();
+  const id = `${trackId ?? ''}`.split(':')[0].trim();
   if (!token || !id) return null;
   const key = `${token}:${id}:${isMobile && get(settings).mobileDataSaver === true}`;
   const existing = streamRequests.get(key);

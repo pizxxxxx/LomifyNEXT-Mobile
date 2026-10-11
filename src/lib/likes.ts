@@ -78,19 +78,22 @@ function loadState(): SyncState {
     if (!raw) return emptyState();
     const parsed = JSON.parse(raw);
     const base = emptyState();
+    const yandexIds = (values: unknown): string[] => Array.isArray(values)
+      ? [...new Set(values.map(id => String(id).split(':')[0].trim()).filter(Boolean))] : [];
+    const removals = yandexIds(parsed?.ymQueue?.remove);
     return {
       seen: {
-        yandex: Array.isArray(parsed?.seen?.yandex) ? parsed.seen.yandex : base.seen.yandex,
+        yandex: Array.isArray(parsed?.seen?.yandex) ? yandexIds(parsed.seen.yandex) : base.seen.yandex,
         soundcloud: Array.isArray(parsed?.seen?.soundcloud)
           ? parsed.seen.soundcloud
           : base.seen.soundcloud,
       },
       scRemoved: Array.isArray(parsed?.scRemoved) ? parsed.scRemoved : [],
-      ymRemovedLocal: Array.isArray(parsed?.ymRemovedLocal) ? parsed.ymRemovedLocal : [],
+      ymRemovedLocal: yandexIds(parsed?.ymRemovedLocal),
       ymRemovedAccount: typeof parsed?.ymRemovedAccount === 'string' ? parsed.ymRemovedAccount : '',
       ymQueue: {
-        add: Array.isArray(parsed?.ymQueue?.add) ? parsed.ymQueue.add : [],
-        remove: Array.isArray(parsed?.ymQueue?.remove) ? parsed.ymQueue.remove : [],
+        add: yandexIds(parsed?.ymQueue?.add).filter(id => !removals.includes(id)),
+        remove: removals,
       },
     };
   } catch (e) {
@@ -112,21 +115,25 @@ function saveState(state: SyncState): void {
 
 /** Идентификатор трека у источника. `null` — синхронизировать нечего (локальный файл). */
 function trackId(track: any): string | null {
-  const id = `${track?.id ?? ''}`.trim();
+  const raw = `${track?.id ?? ''}`.trim();
+  const id = track?.source === 'yandex' ? raw.split(':')[0] : raw;
   return id ? id : null;
 }
 
 /**
  * Тот же трек или нет.
  *
- * Сравнение по названию и артисту, а не по id, — то же, что делает интерфейс во всех местах,
- * где рисуется сердечко. Это не мелочь: одна песня приезжает из Яндекса и из SoundCloud с
- * разными id, и если считать её двумя разными треками, в «Любимом» окажутся два одинаковых
- * ряда, оба с закрашенным сердечком, а щелчок по одному будет гасить второй.
+ * Внутри источника сравниваем его канонический ID: названия и состав артистов
+ * могут уточняться после загрузки. Между источниками сохраняем прежнюю проверку
+ * названия и артиста, чтобы не заводить дубли одной песни из двух сервисов.
  */
 function sameTrack(a: any, b: any): boolean {
+  if (a?.source && a.source === b?.source && trackId(a) && trackId(b)) return trackId(a) === trackId(b);
   return a?.title === b?.title && a?.artist === b?.artist;
 }
+
+let intentRevision = 0;
+const intentVersions = new Map<string, number>();
 
 function currentYandexAccount(): string {
   const uid = get(settings).yandexUser?.uid;
@@ -260,6 +267,7 @@ function rememberIntent(track: any, liked: boolean): void {
   const state = loadState();
 
   if (track.source === 'yandex') {
+    intentVersions.set(id, ++intentRevision);
     alignYandexRemovals(state);
     state.ymRemovedLocal = liked
       ? state.ymRemovedLocal.filter((x) => x !== id)
@@ -313,14 +321,21 @@ async function runFlush(): Promise<FlushResult> {
   const alignedState = loadState();
   alignYandexRemovals(alignedState);
   saveState(alignedState);
-  const queue = alignedState.ymQueue;
-  if (queue.add.length === 0 && queue.remove.length === 0) return done;
+  const account = alignedState.ymRemovedAccount;
+  const attempted = new Set<string>();
 
   const { yandexSetLikes } = await import('./yandex');
 
+  // Drain edits arriving during a request too, but never spin on a failed edit.
+  for (;;) {
+  const queue = loadState().ymQueue;
+  let worked = false;
   for (const liked of [true, false]) {
-    const ids = liked ? queue.add : queue.remove;
+    const ids = (liked ? queue.add : queue.remove).filter(id => !attempted.has(`${liked}:${id}:${intentVersions.get(id) || 0}`));
     if (ids.length === 0) continue;
+    worked = true;
+    const versions = new Map(ids.map(id => [id, intentVersions.get(id) || 0]));
+    for (const id of ids) attempted.add(`${liked}:${id}:${versions.get(id)}`);
     try {
       await yandexSetLikes(token, ids, liked);
     } catch (e) {
@@ -333,8 +348,9 @@ async function runFlush(): Promise<FlushResult> {
     // Состояние перечитываем: пока шёл запрос, человек мог отметить что-то ещё, и запись
     // «того, что было в начале» потеряла бы его действие.
     const state = loadState();
+    if (get(settings).yandexToken !== token || currentYandexAccount() !== account) return done;
     const key = liked ? 'add' : 'remove';
-    state.ymQueue[key] = state.ymQueue[key].filter((id) => !ids.includes(id));
+    state.ymQueue[key] = state.ymQueue[key].filter((id) => !ids.includes(id) || (intentVersions.get(id) || 0) !== versions.get(id));
     // Снимок обязан узнать об отправленном сразу. Иначе следующая сверка увидит свежий лайк
     // как «поставленный только здесь» и отправит его повторно, а свежее снятие — как
     // «появившийся на сервере» и вернёт отметку обратно.
@@ -347,6 +363,8 @@ async function runFlush(): Promise<FlushResult> {
     saveState(state);
 
     (liked ? done.add : done.remove).push(...ids);
+  }
+  if (!worked) break;
   }
 
   return done;
@@ -480,6 +498,7 @@ async function runSync(opts: { silent?: boolean; only?: SourceKey }): Promise<Li
 }
 
 async function mergeSide(side: Side, result: LikesSyncResult): Promise<void> {
+  const readRevision = intentRevision;
   const { tracks, complete } = await side.read();
 
   const remote = new Map<string, any>();
@@ -490,6 +509,11 @@ async function mergeSide(side: Side, result: LikesSyncResult): Promise<void> {
 
   const state = loadState();
   if (side.source === 'yandex') alignYandexRemovals(state);
+  if (side.source === 'yandex') {
+    for (const id of [...state.ymQueue.add, ...state.ymQueue.remove]) side.inFlight.add(id);
+    // A completed write can overtake this read. Its local heart remains authoritative.
+    for (const [id, revision] of intentVersions) if (revision > readRevision) side.inFlight.add(id);
+  }
   const seen = state.seen[side.source];
   const seenSet = new Set(seen ?? []);
 

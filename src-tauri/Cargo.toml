@@ -1,6 +1,6 @@
 [package]
 name = "lomifynext-tauri"
-version = "1.0.33"
+version = "1.0.34"
 description = "LomifyNEXT"
 authors = ["dopaminegdev"]
 license = "GPL-3.0-or-later"
@@ -36,6 +36,8 @@ tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "io-uti
 warp = "0.3"
 base64 = "0.22"
 sha2 = "0.10"
+hmac = "0.12"
+md-5 = "0.10"
 hex = "0.4"
 reqwest = { version = "0.12", features = ["rustls-tls", "stream", "json", "socks"], default-features = false }
 futures-util = "0.3"

@@ -731,6 +731,13 @@ export async function performSearch(query: string) {
 const yandexTwins = new Map<string, string | null>();
 const YANDEX_TWINS_KEY = 'lomifynext_yandex_twins';
 
+/** Known correspondence only; preparing a queue must not search 200 tracks. */
+export function knownYandexPlaybackId(track: any): string | null {
+  if (track?.source === 'yandex') return String(track.id || '').split(':')[0] || null;
+  if (get(settings).searchSource !== 'yandex') return null;
+  return yandexTwins.get(`${matchNorm(track?.artist || '')}|${matchNorm(track?.title || '')}`) || null;
+}
+
 if (typeof window !== 'undefined' && window.localStorage) {
   try {
     const saved = localStorage.getItem(YANDEX_TWINS_KEY);

@@ -79,6 +79,41 @@ pub async fn audio_load_url(
     .await
 }
 
+/// Resolve + load in one native task: JavaScript need not wake up between them.
+#[tauri::command]
+pub async fn audio_load_mobile_source(
+    source: BackgroundTrack,
+    candidates: Vec<BackgroundTrack>,
+    previous: Option<BackgroundTrack>,
+    epoch: u64,
+    crossfade_ms: Option<u64>,
+    remaining_ms: Option<u64>,
+    app: AppHandle,
+    state: State<'_, AudioState>,
+) -> Result<AudioLoadResult, String> {
+    #[cfg(any(target_os = "android", target_os = "ios"))]
+    {
+        if background::status().epoch != epoch { return Ok(AudioLoadResult { duration_secs: None, superseded: true }); }
+        background::prepare(epoch, candidates);
+        background::prepare_previous(epoch, previous, Some(source.clone()));
+        let audio_generation = state.load_gen.load(Ordering::Relaxed);
+        let url = super::background_source::resolve(&source).await?;
+        if background::status().epoch != epoch || state.load_gen.load(Ordering::Relaxed) != audio_generation {
+            return Ok(AudioLoadResult { duration_secs: None, superseded: true });
+        }
+        let cache = app.path().app_cache_dir().ok().map(|p| p.join("audio-normalization"));
+        let result = engine::load_url(url.clone(), None, None, cache, Some(source.key.clone()), false,
+            crossfade_ms.unwrap_or(0), remaining_ms.unwrap_or(0), &app, state.clone()).await?;
+        if !result.superseded && background::status().epoch == epoch {
+            crate::track_cache::cache_background_track(&app, &source, url);
+            audio_set_metadata(source.title, source.artist, source.cover_url, result.duration_secs.unwrap_or(0.0), state);
+        }
+        Ok(result)
+    }
+    #[cfg(not(any(target_os = "android", target_os = "ios")))]
+    { let _ = (source, candidates, previous, epoch, crossfade_ms, remaining_ms, app, state); Err("Mobile audio source is unavailable on desktop".into()) }
+}
+
 #[tauri::command]
 pub fn audio_play(app: AppHandle, state: State<'_, AudioState>) {
     #[cfg(target_os = "android")]

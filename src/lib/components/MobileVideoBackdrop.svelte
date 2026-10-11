@@ -1,5 +1,5 @@
 <script module lang="ts">
-  const videoCache = new Map<string, Promise<string>>();
+  const videoCache = new Map<string, { expires: number; request: Promise<string> }>();
 </script>
 
 <script lang="ts">
@@ -7,6 +7,7 @@
   import { settings } from '$lib/stores';
   import { getYandexBackgroundVideoUrl, normalizeYandexBackgroundVideoUrl } from '$lib/yandex';
   import { handleArtworkError, handleArtworkLoad } from '$lib/offlineCovers';
+  import { mobileDecorativeVideo } from '$lib/actions/mobileDecorativeVideo';
 
   type VideoTrack = { source: string; id?: string; backgroundVideoUrl?: string; coverUrl?: string } | null;
   let { track, coverUrl = '', active = true, variant }: {
@@ -18,40 +19,38 @@
 
   let resolvedUrl = $state('');
   let failedUrl = $state('');
-  let videoReady = $state(false);
   let visible = $state(true);
   let reducedMotion = $state(false);
   let directUrl = $derived(track?.source === 'yandex' ? normalizeYandexBackgroundVideoUrl(track.backgroundVideoUrl) : '');
+  let trackId = $derived(track?.source === 'yandex' ? String(track.id || '').split(':')[0] : '');
+  let token = $derived($settings.yandexToken);
   let videoUrl = $derived(directUrl || resolvedUrl);
-  let enabled = $derived(active && visible && !reducedMotion && $settings.mobileVideoBackground !== false &&
+  let allowed = $derived(!reducedMotion && $settings.mobileVideoBackground !== false &&
     (variant !== 'lyrics' || $settings.mobileLyricsVideoBackground !== false));
-  let showVideo = $derived(enabled && !!videoUrl && failedUrl !== videoUrl);
-
-  function decorativeVideo(node: HTMLVideoElement) {
-    node.setAttribute('disableremoteplayback', '');
-    node.setAttribute('disablepictureinpicture', '');
-  }
+  let enabled = $derived(active && visible && allowed);
+  let showVideo = $derived(allowed && !!videoUrl && failedUrl !== videoUrl);
 
   $effect(() => {
-    const id = track?.source === 'yandex' ? track.id : undefined;
-    const token = $settings.yandexToken;
-    const shouldResolve = enabled && !!id && !!token && !directUrl;
+    const id = trackId;
+    // Resolve by media identity, not playback/visibility or the track object.
+    // Enrichment and pause must not reset readiness on an already loaded <video>.
+    const shouldResolve = allowed && !!id && !!token && !directUrl;
     resolvedUrl = '';
     failedUrl = '';
-    videoReady = false;
     if (!shouldResolve || !id) return;
     let cancelled = false;
     const cacheKey = `${token}:${id}`;
-    let request = videoCache.get(cacheKey);
-    if (!request) {
-      request = getYandexBackgroundVideoUrl(token, id).catch(error => {
+    let entry = videoCache.get(cacheKey);
+    if (!entry || entry.expires <= Date.now()) {
+      const request = getYandexBackgroundVideoUrl(token, id).catch(error => {
         videoCache.delete(cacheKey);
         throw error;
       });
-      videoCache.set(cacheKey, request);
+      entry = { request, expires: Date.now() + 300_000 };
+      videoCache.set(cacheKey, entry);
       if (videoCache.size > 40) videoCache.delete(videoCache.keys().next().value!);
     }
-    void request.then(url => { if (!cancelled) resolvedUrl = url; }).catch(() => { /* Cover or theme stays visible. */ });
+    void entry.request.then(url => { if (!cancelled) resolvedUrl = url; }).catch(() => { /* Cover or theme stays visible. */ });
     return () => { cancelled = true; };
   });
 
@@ -73,7 +72,9 @@
 <div class:mobile-now-art={variant === 'player'} class:mobile-lyrics-backdrop={variant === 'lyrics'} class="mobile-video-backdrop" aria-hidden="true">
   {#if variant === 'player' && coverUrl}<img src={coverUrl} alt="" onerror={(event) => handleArtworkError(event, track?.coverUrl || '')} onload={handleArtworkLoad} />{/if}
   {#if showVideo}
+    {#key videoUrl}
     <!-- svelte-ignore a11y_media_has_caption -->
-    <video src={videoUrl} use:decorativeVideo autoplay muted loop playsinline preload="metadata" poster={coverUrl} class:ready={videoReady} onloadeddata={() => videoReady = true} onerror={() => failedUrl = videoUrl} aria-hidden="true"></video>
+    <video src={videoUrl} use:mobileDecorativeVideo={enabled} muted loop playsinline preload="metadata" poster={coverUrl} onerror={() => failedUrl = videoUrl} aria-hidden="true"></video>
+    {/key}
   {/if}
 </div>

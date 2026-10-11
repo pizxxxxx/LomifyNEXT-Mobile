@@ -2,6 +2,8 @@ pub mod analyser;
 #[cfg(any(target_os = "android", target_os = "ios"))]
 mod spectrum;
 pub mod background;
+#[cfg(any(target_os = "android", target_os = "ios"))]
+mod background_source;
 pub mod commands;
 pub(crate) mod decode;
 mod device;

@@ -282,6 +282,7 @@ pub fn run() {
             get_os_username,
             audio::audio_load_file,
             audio::audio_load_url,
+            audio::audio_load_mobile_source,
             audio::audio_prefetch_url,
             audio::audio_play,
             audio::audio_ios_begin_track,

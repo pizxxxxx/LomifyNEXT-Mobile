@@ -960,16 +960,16 @@ body[data-ios-scroll="artist"]:has(.mobile-player.expanded:not([inert]), dialog[
 .mobile-liked-cover { color: #fff; background: linear-gradient(145deg, color-mix(in srgb, var(--color-primary, #ff884d) 75%, #36101b), color-mix(in srgb, var(--color-primary, #ff884d) 34%, #21121b)); }
 .mobile-now-panel .mobile-now-art > img { opacity: .3; }
 .mobile-now-panel .mobile-now-header { min-height: 32px; }
-.mobile-now-panel .mobile-now-track-heading { position: relative; grid-template-columns: minmax(0, 1fr) 44px 44px; min-height: 76px; transform: translateY(0); transition: transform 620ms cubic-bezier(0.22, 1, 0.36, 1); }
+.mobile-now-panel .mobile-now-track-heading { position: relative; grid-template-columns: minmax(0, 1fr) 44px 44px; height: 88px; min-height: 88px; transform: translateY(0); transition: transform 620ms cubic-bezier(0.22, 1, 0.36, 1); }
 .mobile-now-panel .mobile-now-cover { position: absolute; left: 0; top: 12px; width: 52px; height: 52px; opacity: 0; transform: scale(.72); pointer-events: none; transition: transform 620ms cubic-bezier(0.22, 1, 0.36, 1), opacity 180ms ease; }
-.mobile-now-panel .mobile-now-title { min-width: 0; transform: translateX(0); transition: transform 620ms cubic-bezier(0.22, 1, 0.36, 1); }
+.mobile-now-panel .mobile-now-title { min-width: 0; height: 88px; transform-origin: left center; transform: translateX(0); transition: transform 620ms cubic-bezier(0.22, 1, 0.36, 1); }
 .mobile-now-panel .mobile-now-title h1 { font-size: 22px; }
 .mobile-now-panel .mobile-now-title p { font-size: 17px; }
 .mobile-now-panel.show-lyrics .mobile-now-track-heading { transform: translateY(var(--player-heading-shift, -300px)); }
 .mobile-now-panel.show-lyrics .mobile-now-cover { opacity: 1; transform: scale(1); }
 .mobile-now-panel.show-lyrics .mobile-now-title { max-width: calc(100% - 66px); transform: translateX(66px); }
-.mobile-now-panel.show-lyrics .mobile-now-title h1 { font-size: 17px; }
-.mobile-now-panel.show-lyrics .mobile-now-title p { font-size: 13px; }
+.mobile-now-panel.show-lyrics .mobile-now-title { transform: translateX(66px) scale(.78); }
+.mobile-now-panel .mobile-now-title .artist-link { min-height: 30px; }
 .mobile-now-panel .mobile-now-middle > .mobile-now-lyrics { inset: 88px 0 12px; z-index: 2; opacity: 0; visibility: hidden; transform: translateY(10px); pointer-events: none; transition: opacity 300ms ease-out, transform 620ms cubic-bezier(.22, 1, .36, 1), visibility 0s 300ms; }
 .mobile-now-panel .mobile-now-middle > .mobile-now-lyrics.is-visible { opacity: 1; visibility: visible; transform: none; pointer-events: auto; transition: opacity 440ms ease-out 160ms, transform 620ms cubic-bezier(.22, 1, .36, 1), visibility 0s; }
 .mobile-now-panel .mobile-now-controls { border: 0; background: transparent; box-shadow: none; }

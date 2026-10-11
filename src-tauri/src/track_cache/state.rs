@@ -729,6 +729,7 @@ async fn write_cache_metadata(path: &Path, meta: &TrackCacheMetadata) {
 }
 
 async fn write_response_to_cache(
+    client: &Client,
     target_dir: &Path,
     urn: &str,
     response: reqwest::Response,
@@ -743,6 +744,7 @@ async fn write_response_to_cache(
         .map_err(|err| DownloadError::Fatal(format!("Cache create failed: {err}")))?;
     let mut writer = BufWriter::with_capacity(STREAM_WRITE_BUFFER_SIZE, file);
     let content_length = response.content_length().unwrap_or(0);
+    let manifest_url = response.url().to_string();
     let mut stream = response.bytes_stream();
     let mut total_size = 0u64;
     let mut sniff = Vec::with_capacity(AUDIO_SNIFF_LEN);
@@ -790,16 +792,25 @@ async fn write_response_to_cache(
     drop(writer);
 
     if !is_valid_audio(&sniff, total_size) {
-        cleanup_temp_file(&temp_path).await;
-        // Плейлист вместо аудио — не порча данных, а другой формат раздачи, и лечится он
-        // сборкой сегментов, а не повтором запроса. Отдельный текст нужен затем, чтобы это
-        // было видно в логе: «Invalid audio data» одинаково выглядело и для битого файла, и
-        // для HLS, и путь к причине занимал полчаса.
-        if hls::looks_like_playlist(&sniff) {
-            return Err(DownloadError::Fatal(
-                "источник отдал HLS-плейлист вместо аудио".into(),
-            ));
+        // Some CDN manifests have neither a .m3u8 suffix nor an HLS content type.
+        // Inspect the body too; replaying this response as audio never fixes it.
+        if hls::looks_like_playlist(&sniff) && total_size <= 1024 * 1024 {
+            let manifest = tokio::fs::read_to_string(&temp_path).await;
+            cleanup_temp_file(&temp_path).await;
+            let manifest =
+                manifest.map_err(|_| DownloadError::Retryable("playlist read failed".into()))?;
+            let data = hls::assemble(client, &manifest, &manifest_url)
+                .await
+                .map_err(|error| {
+                    if error == hls::DRM_ERROR {
+                        DownloadError::Fatal(error)
+                    } else {
+                        DownloadError::Retryable(error)
+                    }
+                })?;
+            return write_bytes_to_cache(target_dir, urn, &data, quality, source).await;
         }
+        cleanup_temp_file(&temp_path).await;
         return Err(DownloadError::Fatal("Invalid audio data".into()));
     }
 
@@ -947,7 +958,11 @@ fn response_is_playlist(response: &reqwest::Response, requested_url: &str) -> bo
     }
 
     let final_path = response.url().path().to_ascii_lowercase();
-    let requested_path = requested_url.split('?').next().unwrap_or("").to_ascii_lowercase();
+    let requested_path = requested_url
+        .split('?')
+        .next()
+        .unwrap_or("")
+        .to_ascii_lowercase();
     final_path.ends_with(".m3u8") || requested_path.ends_with(".m3u8")
 }
 
@@ -999,6 +1014,7 @@ async fn download_api(
         }
 
         return write_response_to_cache(
+            client,
             target_dir,
             urn,
             response,
@@ -1053,7 +1069,10 @@ impl TrackCacheState {
     pub async fn init_ffmpeg(&self, install_dir: PathBuf) {
         match transcode::acquire_ffmpeg(&install_dir).await {
             Some(path) => {
-                let line = format!("[TrackCache] ffmpeg ready: {}", transcode::backend_label(&path));
+                let line = format!(
+                    "[TrackCache] ffmpeg ready: {}",
+                    transcode::backend_label(&path)
+                );
                 println!("{line}");
                 self.diag("INFO", line);
                 if let Ok(mut slot) = self.ffmpeg.lock() {
@@ -1386,7 +1405,8 @@ impl TrackCacheState {
         }
 
         let final_name = urn_to_filename(urn);
-        let clean_path = transcode::transcode_to_m4a(ffmpeg, &incoming, &dest_dir, &final_name).await?;
+        let clean_path =
+            transcode::transcode_to_m4a(ffmpeg, &incoming, &dest_dir, &final_name).await?;
 
         let probed = transcode::probe_duration_ms(ffmpeg, &clean_path).await;
 
@@ -1405,12 +1425,15 @@ impl TrackCacheState {
                     eprintln!("{line}");
                     self.diag("WARN", line);
                     tokio::fs::remove_file(&clean_path).await.ok();
-                    tokio::fs::remove_file(cache_metadata_path(&clean_path)).await.ok();
+                    tokio::fs::remove_file(cache_metadata_path(&clean_path))
+                        .await
+                        .ok();
                     self.remove_incoming(urn).await;
                     return Ok(());
                 }
-                let line =
-                    format!("[TrackCache] {urn}: only a {actual}ms preview is available — keeping it");
+                let line = format!(
+                    "[TrackCache] {urn}: only a {actual}ms preview is available — keeping it"
+                );
                 eprintln!("{line}");
                 self.diag("WARN", line);
                 accepted_expected = probed; // stop flagging this file as truncated
@@ -1436,7 +1459,9 @@ impl TrackCacheState {
     async fn remove_incoming(&self, urn: &str) {
         let path = self.incoming_file_path(urn);
         tokio::fs::remove_file(&path).await.ok();
-        tokio::fs::remove_file(cache_metadata_path(&path)).await.ok();
+        tokio::fs::remove_file(cache_metadata_path(&path))
+            .await
+            .ok();
     }
 
     /// Delete the raw А file after a grace period, so a path just handed to the
@@ -1497,7 +1522,11 @@ impl TrackCacheState {
     /// Ensure a clean m4a exists for export, coalescing with any background
     /// transcode via the shared dedup set. Returns the clean path, or `None` if
     /// no clean file could be produced (caller falls back to the raw bytes).
-    async fn ensure_clean_for_export(&self, urn: &str, ffmpeg: &transcode::Backend) -> Option<PathBuf> {
+    async fn ensure_clean_for_export(
+        &self,
+        urn: &str,
+        ffmpeg: &transcode::Backend,
+    ) -> Option<PathBuf> {
         if let Some(path) = self.resolve_clean_path(urn) {
             return Some(path);
         }
@@ -1529,7 +1558,11 @@ impl TrackCacheState {
         if !resp.status().is_success() {
             return None;
         }
-        if resp.content_length().map(|l| l > MAX_COVER_BYTES).unwrap_or(false) {
+        if resp
+            .content_length()
+            .map(|l| l > MAX_COVER_BYTES)
+            .unwrap_or(false)
+        {
             return None;
         }
         let bytes = resp.bytes().await.ok()?;
@@ -1637,6 +1670,7 @@ impl TrackCacheState {
                     let quality = PlaybackQuality::Hq;
                     println!("[TrackCache] {urn} → storage (redirect via {host})");
                     match write_response_to_cache(
+                        &self.client,
                         target_dir,
                         urn,
                         resp,
@@ -1751,6 +1785,7 @@ impl TrackCacheState {
                     let quality = PlaybackQuality::Hq;
                     println!("[TrackCache] {urn} → storage stream ({host})");
                     match write_response_to_cache(
+                        &self.client,
                         target_dir,
                         urn,
                         resp,
@@ -2452,9 +2487,8 @@ impl TrackCacheState {
                     .accessed()
                     .or_else(|_| metadata.modified())
                     .unwrap_or(UNIX_EPOCH);
-                let is_protected = liked.contains(&urn)
-                    || protected.contains(&urn)
-                    || in_flight.contains(&urn);
+                let is_protected =
+                    liked.contains(&urn) || protected.contains(&urn) || in_flight.contains(&urn);
                 let stale = request.max_age_days > 0 && last_used < cutoff;
 
                 if stale && !is_protected {

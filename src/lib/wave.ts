@@ -60,7 +60,7 @@ let startedId = '';
  * Два, а не ноль: запрос к станции идёт секунду-две, и делать его в момент, когда очередь уже
  * пуста, означает паузу между треками. Пока играет предпоследний, порция приезжает незаметно.
  */
-const REFILL_AT = 2;
+const REFILL_AT = 8;
 
 /** При активном фильтре просматриваем несколько порций, пока не наберётся очередь. */
 const FILTER_SCAN_BATCHES = 18;
@@ -228,6 +228,9 @@ export async function startWave(options: { signal?: AbortSignal; seedTrack?: any
   waveActive.set(true);
   currentTrack.set(tracks[0]);
   isPlaying.set(true);
+  // Start music from the first response; then give the native background queue
+  // a reserve without blocking the initial play or downloading audio to disk.
+  void waveRefill();
   return true;
 }
 
